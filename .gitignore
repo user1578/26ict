@@ -1,0 +1,51 @@
+# Python 环境和缓存
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node.js 安装依赖和构建产物
+node_modules/
+frontend/dist/
+backend/dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# 本地配置与密钥
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+.secret/
+
+# 本地数据库（显式本地命名；保留 tests/ 与 data/ 中的测试数据）
+*.local.db
+*.local.sqlite
+*.local.sqlite3
+travelguard.db
+travelguard.sqlite
+travelguard.sqlite3
+
+# 日志和临时缓存
+*.log
+logs/
+.cache/
+tmp/
+temp/
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+Desktop.ini
