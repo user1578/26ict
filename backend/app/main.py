@@ -1,4 +1,6 @@
 import os
+from contextlib import asynccontextmanager
+from pathlib import Path
 from secrets import compare_digest
 from typing import Annotated
 
@@ -6,8 +8,19 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 
 from .logic import calculate_budget, validate_plan
 from .schemas import BudgetRequest, BudgetResult, ValidatePlanRequest, ValidatePlanResult
+from .travel_api import router as travel_router
+from .travel_store import TravelStore
 
-app = FastAPI(title="TravelGuard Backend", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    default_path = Path(__file__).resolve().parents[1] / "travelguard.local.sqlite3"
+    app.state.travel_store = TravelStore(os.getenv("TRAVELGUARD_DB_PATH", str(default_path)))
+    app.state.travel_store.initialize()
+    yield
+
+
+app = FastAPI(title="TravelGuard Backend", version="0.2.0", lifespan=lifespan)
 
 
 def require_tool_key(x_tool_key: Annotated[str | None, Header()] = None) -> None:
@@ -16,6 +29,9 @@ def require_tool_key(x_tool_key: Annotated[str | None, Header()] = None) -> None
         raise HTTPException(status_code=503, detail="工具服务尚未配置认证密钥")
     if x_tool_key is None or not compare_digest(x_tool_key, expected):
         raise HTTPException(status_code=401, detail="工具认证失败")
+
+
+app.include_router(travel_router, dependencies=[Depends(require_tool_key)])
 
 
 @app.get("/health")

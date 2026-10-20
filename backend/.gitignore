@@ -1,0 +1,7 @@
+# SQLite recovery sidecars may contain local travel state. Preserve them on disk.
+*.local.sqlite3-*
+*.local.sqlite-*
+*.local.db-*
+travelguard.sqlite3-*
+travelguard.sqlite-*
+travelguard.db-*
