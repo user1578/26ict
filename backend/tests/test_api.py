@@ -174,3 +174,17 @@ def test_naive_datetime_is_rejected():
 def test_duplicate_activity_ids_are_rejected():
     r = post_plan({"activities": [ACTIVITY, ACTIVITY]})
     assert r.status_code == 422
+
+
+def test_non_ascii_authentication_value_returns_401():
+    r = client.post("/api/tools/calculate-budget", headers={"X-Tool-Key": b"\xff"},
+                    json={"budget_cny": 10})
+    assert r.status_code == 401
+
+
+def test_return_arrival_before_activity_end_cannot_pass():
+    r = post_plan({"activities": [ACTIVITY], "budget": {"budget_cny": 300},
+                   "return_deadline": "2026-11-18T17:00:00+08:00",
+                   "arrival_at_return_station": "2026-11-18T13:00:00+08:00"})
+    assert r.json()["overall"] == "FAIL"
+    assert check(r, "return_timeline_check")["status"] == "FAIL"

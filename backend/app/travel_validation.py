@@ -71,12 +71,6 @@ def validate_snapshot(
             "草案不能宣称新预约/改期已完成，或降低已知地点预约要求" if booking_claims or downgraded
             else "未新增预约完成事实，保留已知预约要求；未执行取消或改签")
 
-    # A return estimate cannot contradict the last activity, even if both precede the deadline.
-    if plan.arrival_at_return_station is not None:
-        consistent = plan.arrival_at_return_station >= max(a.end_at for a in plan.activities)
-        add("return_timeline_check", Status.PASS if consistent else Status.FAIL,
-            "返程到站时间不早于行程结束" if consistent else "返程到站时间早于行程结束")
-
     indexed = {a.id: a for a in plan.activities}
     for event in events:
         if not event.active:

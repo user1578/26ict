@@ -357,6 +357,65 @@ def test_resource_identifiers_cannot_create_unaddressable_records(client):
     assert draft(client, "D/1").status_code == 422
 
 
+def test_receipt_failure_rolls_back_the_entire_confirmation(client, database):
+    setup_draft(client)
+    with sqlite3.connect(database) as db:
+        db.execute("CREATE TRIGGER reject_receipt BEFORE INSERT ON requests "
+                   "WHEN NEW.request_id='confirm-1' BEGIN SELECT RAISE(ABORT, 'receipt failure'); END")
+    with TestClient(app, raise_server_exceptions=False) as failing:
+        assert confirm(failing).status_code == 500
+    assert client.get(ROOT, headers=KEY).json()["current_version"] == 1
+    assert client.get(f"{ROOT}/drafts/D1", headers=KEY).json()["status"] == "pending"
+    assert len(client.get(f"{ROOT}/versions", headers=KEY).json()) == 1
+    with sqlite3.connect(database) as db:
+        assert db.execute("SELECT count(*) FROM requests WHERE request_id='confirm-1'").fetchone()[0] == 0
+        db.execute("DROP TRIGGER reject_receipt")
+    assert confirm(client).status_code == 200
+    assert confirm(client).status_code == 200
+    assert len(client.get(f"{ROOT}/versions", headers=KEY).json()) == 2
+
+
+def test_event_racing_confirmation_cannot_commit_an_unhandled_event(client):
+    setup_draft(client)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        confirmation = pool.submit(confirm, client)
+        updated = pool.submit(event, client, "E2", 1, kind="poi_closed", activity_id=None,
+                              earliest_start_at=None, poi_id="yellow-crane-tower",
+                              effective_at="2026-11-18T13:00:00+08:00")
+        committed, changed = confirmation.result(), updated.result()
+    assert changed.status_code == 200
+    state = client.get(ROOT, headers=KEY).json()
+    assert state["event_revision"] == 2
+    if committed.status_code == 200:
+        assert state["current_version"] == 2
+        assert committed.json()["event_revision"] == 1  # committed before E2; E2 remains active
+    else:
+        assert committed.status_code == 409
+        assert state["current_version"] == 1
+        assert client.get(f"{ROOT}/drafts/D1", headers=KEY).json()["status"] == "stale"
+    assert {e["event_id"] for e in state["events"] if e["active"]} == {"E1", "E2"}
+
+
+def test_snapshot_preserves_paid_history_and_pending_refunds_across_versions(client):
+    setup_draft(client)
+    candidate = delayed_plan()
+    candidate["refunds"] = [{"id": "pending", "amount_cny": "80.00", "status": "pending"}]
+    assert draft(client, "with-refund", candidate=candidate).status_code == 201
+    first = confirm(client, "with-refund").json()
+    assert first["budget"]["conservative_total_cny"] == "170.00"
+    assert first["budget"]["pending_refunds_cny"] == "80.00"
+    assert draft(client, "next", base_version=2, candidate=candidate).status_code == 201
+    second = confirm(client, "next", base_version=2, request_id="confirm-next").json()
+    assert second["version"] == 3
+    assert second["budget"] == first["budget"]
+    assert second["budget"]["paid_cny"] == "100.00"
+    changed = deepcopy(candidate)
+    changed["charges"][0]["status"] = "planned"
+    r = draft(client, "hide-paid", base_version=3, candidate=changed)
+    assert r.json()["validation"]["overall"] == "FAIL"
+    assert confirm(client, "hide-paid", base_version=3, request_id="cannot-hide-paid").status_code == 422
+
+
 def workflow(client):
     assert create(client, locked_activity_ids=["museum"]).status_code == 201
     assert event(client).status_code == 200

@@ -108,6 +108,11 @@ def validate_plan(data: ValidatePlanRequest) -> ValidatePlanResult:
             "返程到站时间符合截止要求" if on_time else "预计抵达返程车站超过截止时间",
         )
 
+    if data.arrival_at_return_station is not None:
+        consistent = data.arrival_at_return_station >= max(a.end_at for a in acts)
+        add("return_timeline_check", Status.PASS if consistent else Status.FAIL,
+            "返程到站时间不早于行程结束" if consistent else "返程到站时间早于行程结束")
+
     if not data.locked_activities:
         add("state_check", Status.NOT_APPLICABLE, "未提供不可修改的历史活动")
     else:
