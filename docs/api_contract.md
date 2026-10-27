@@ -2,6 +2,8 @@
 
 状态：**供 A、B、C 联调确认的草案**，尚未经 A、C 共同确认，不作为已冻结的稳定版本。以本分支实际 `/openapi.json` 及 `backend/app/*schemas.py` 为字段定义；本文解释业务语义。保留既有预算、校验与旅行状态接口，不开发 A 的工作流或 C 的页面。
 
+第五阶段的 WF_Replan 离线适配与评估原型见 [适配说明](wf_replan_adapter_notes.md)，属于独立开发工具，不新增正式公开 API，不改变本文既有 schema v2、草案、锁定或 PASS 确认语义；AgentArts 平台接口尚未接入。
+
 ## 1. 调用与认证
 
 - 本机服务示例：`http://127.0.0.1:8000`，JSON UTF-8。`GET /health` 为存活检查，不证明外部服务已配置。

@@ -1,0 +1,434 @@
+{
+  "data_type": "simulation",
+  "context": {
+    "trip": {
+      "trip_id": "simulation-trip",
+      "title": "simulation:离线重规划",
+      "city": "武汉",
+      "party_size": 3,
+      "start_date": "2026-11-18",
+      "end_date": "2026-11-18",
+      "preferences": {
+        "stay_together": true
+      },
+      "current_version": 1,
+      "event_revision": 1,
+      "history_revision": 0,
+      "constraints": {
+        "budget_cny": "300.00",
+        "max_walking_minutes_per_leg": 20,
+        "return_deadline": "2026-11-18T18:00:00+08:00"
+      },
+      "locked_activity_ids": [],
+      "current_plan": {
+        "trip_id": "simulation-trip",
+        "version": 1,
+        "event_revision": 0,
+        "history_revision": 0,
+        "source_draft_id": null,
+        "plan": {
+          "activities": [
+            {
+              "id": "A1",
+              "poi_id": "simulation:station",
+              "start_at": "2026-11-18T09:00:00+08:00",
+              "end_at": "2026-11-18T10:00:00+08:00",
+              "transport_minutes_from_previous": null,
+              "walking_minutes_from_previous": null,
+              "opening_status": "confirmed_open",
+              "booking_required": false,
+              "booking_status": "unknown"
+            },
+            {
+              "id": "A3",
+              "poi_id": "simulation:museum",
+              "start_at": "2026-11-18T14:00:00+08:00",
+              "end_at": "2026-11-18T15:00:00+08:00",
+              "transport_minutes_from_previous": 30,
+              "walking_minutes_from_previous": 10,
+              "opening_status": "confirmed_open",
+              "booking_required": false,
+              "booking_status": "unknown"
+            }
+          ],
+          "charges": [
+            {
+              "id": "paid",
+              "amount_cny": "100.00",
+              "status": "paid"
+            },
+            {
+              "id": "future",
+              "amount_cny": "50.00",
+              "status": "planned"
+            }
+          ],
+          "refunds": [
+            {
+              "id": "received",
+              "amount_cny": "10.00",
+              "status": "received"
+            },
+            {
+              "id": "pending",
+              "amount_cny": "40.00",
+              "status": "pending"
+            }
+          ],
+          "arrival_at_return_station": "2026-11-18T17:00:00+08:00",
+          "activity_evidence": {
+            "A1": "simulation:station-open",
+            "A3": "simulation:museum-open"
+          },
+          "financial_evidence": {
+            "paid": "simulation:paid",
+            "received": "simulation:received"
+          }
+        },
+        "budget": {
+          "budget_cny": "300.00",
+          "paid_cny": "100.00",
+          "planned_cny": "50.00",
+          "received_refunds_cny": "10.00",
+          "pending_refunds_cny": "40.00",
+          "conservative_total_cny": "140.00",
+          "remaining_cny": "160.00",
+          "within_budget": true
+        },
+        "validation": {
+          "overall": "PASS",
+          "checks": [
+            {
+              "name": "time_check",
+              "status": "PASS",
+              "detail": "已知活动时段与交通耗时没有冲突"
+            },
+            {
+              "name": "opening_check",
+              "status": "PASS",
+              "detail": "输入的地点开放状态均为已核实开放"
+            },
+            {
+              "name": "booking_check",
+              "status": "NOT_APPLICABLE",
+              "detail": "没有要求核验的预约"
+            },
+            {
+              "name": "budget_check",
+              "status": "PASS",
+              "detail": "保守预计总支出 140.00 元，预算 300.00 元"
+            },
+            {
+              "name": "walking_check",
+              "status": "PASS",
+              "detail": "已提供的步行路段均满足限制"
+            },
+            {
+              "name": "return_check",
+              "status": "PASS",
+              "detail": "返程到站时间符合截止要求"
+            },
+            {
+              "name": "return_timeline_check",
+              "status": "PASS",
+              "detail": "返程到站时间不早于行程结束"
+            },
+            {
+              "name": "state_check",
+              "status": "NOT_APPLICABLE",
+              "detail": "未提供不可修改的历史活动"
+            },
+            {
+              "name": "evidence_check",
+              "status": "PASS",
+              "detail": "声明的已核实事实均有调用方提供的证据引用"
+            }
+          ],
+          "note": "仅核验持久化约束及调用方提供的事实/证据引用；模拟证据不代表真实服务状态，未联网核实或执行第三方交易。"
+        },
+        "confirmation": null,
+        "created_at": "2026-10-28T00:00:00Z"
+      },
+      "events": [
+        {
+          "event_id": "B-E1",
+          "revision": 1,
+          "kind": "train_delay",
+          "active": true,
+          "activity_id": "A1",
+          "earliest_start_at": "2026-11-18T11:00:00+08:00",
+          "source": "simulation",
+          "evidence_ref": "simulation:delay",
+          "verification_status": "verified"
+        }
+      ]
+    },
+    "versions": [
+      {
+        "trip_id": "simulation-trip",
+        "version": 1,
+        "event_revision": 0,
+        "history_revision": 0,
+        "source_draft_id": null,
+        "plan": {
+          "activities": [
+            {
+              "id": "A1",
+              "poi_id": "simulation:station",
+              "start_at": "2026-11-18T09:00:00+08:00",
+              "end_at": "2026-11-18T10:00:00+08:00",
+              "transport_minutes_from_previous": null,
+              "walking_minutes_from_previous": null,
+              "opening_status": "confirmed_open",
+              "booking_required": false,
+              "booking_status": "unknown"
+            },
+            {
+              "id": "A3",
+              "poi_id": "simulation:museum",
+              "start_at": "2026-11-18T14:00:00+08:00",
+              "end_at": "2026-11-18T15:00:00+08:00",
+              "transport_minutes_from_previous": 30,
+              "walking_minutes_from_previous": 10,
+              "opening_status": "confirmed_open",
+              "booking_required": false,
+              "booking_status": "unknown"
+            }
+          ],
+          "charges": [
+            {
+              "id": "paid",
+              "amount_cny": "100.00",
+              "status": "paid"
+            },
+            {
+              "id": "future",
+              "amount_cny": "50.00",
+              "status": "planned"
+            }
+          ],
+          "refunds": [
+            {
+              "id": "received",
+              "amount_cny": "10.00",
+              "status": "received"
+            },
+            {
+              "id": "pending",
+              "amount_cny": "40.00",
+              "status": "pending"
+            }
+          ],
+          "arrival_at_return_station": "2026-11-18T17:00:00+08:00",
+          "activity_evidence": {
+            "A1": "simulation:station-open",
+            "A3": "simulation:museum-open"
+          },
+          "financial_evidence": {
+            "paid": "simulation:paid",
+            "received": "simulation:received"
+          }
+        },
+        "budget": {
+          "budget_cny": "300.00",
+          "paid_cny": "100.00",
+          "planned_cny": "50.00",
+          "received_refunds_cny": "10.00",
+          "pending_refunds_cny": "40.00",
+          "conservative_total_cny": "140.00",
+          "remaining_cny": "160.00",
+          "within_budget": true
+        },
+        "validation": {
+          "overall": "PASS",
+          "checks": [
+            {
+              "name": "time_check",
+              "status": "PASS",
+              "detail": "已知活动时段与交通耗时没有冲突"
+            },
+            {
+              "name": "opening_check",
+              "status": "PASS",
+              "detail": "输入的地点开放状态均为已核实开放"
+            },
+            {
+              "name": "booking_check",
+              "status": "NOT_APPLICABLE",
+              "detail": "没有要求核验的预约"
+            },
+            {
+              "name": "budget_check",
+              "status": "PASS",
+              "detail": "保守预计总支出 140.00 元，预算 300.00 元"
+            },
+            {
+              "name": "walking_check",
+              "status": "PASS",
+              "detail": "已提供的步行路段均满足限制"
+            },
+            {
+              "name": "return_check",
+              "status": "PASS",
+              "detail": "返程到站时间符合截止要求"
+            },
+            {
+              "name": "return_timeline_check",
+              "status": "PASS",
+              "detail": "返程到站时间不早于行程结束"
+            },
+            {
+              "name": "state_check",
+              "status": "NOT_APPLICABLE",
+              "detail": "未提供不可修改的历史活动"
+            },
+            {
+              "name": "evidence_check",
+              "status": "PASS",
+              "detail": "声明的已核实事实均有调用方提供的证据引用"
+            }
+          ],
+          "note": "仅核验持久化约束及调用方提供的事实/证据引用；模拟证据不代表真实服务状态，未联网核实或执行第三方交易。"
+        },
+        "confirmation": null,
+        "created_at": "2026-10-28T00:00:00Z"
+      }
+    ],
+    "timezone_offset": "+08:00",
+    "activity_dates": {},
+    "event_bindings": {
+      "E1": "B-E1"
+    },
+    "option_support": {
+      "OPT_A": {
+        "activities": {
+          "A1": {
+            "id": "A1",
+            "poi_id": "simulation:station",
+            "start_at": "2026-11-18T11:00:00+08:00",
+            "end_at": "2026-11-18T12:00:00+08:00",
+            "transport_minutes_from_previous": null,
+            "walking_minutes_from_previous": null,
+            "opening_status": "confirmed_open",
+            "booking_required": false,
+            "booking_status": "unknown"
+          }
+        },
+        "activity_dates": {},
+        "removed_activity_ids": [],
+        "charges": [
+          {
+            "id": "paid",
+            "amount_cny": "100.00",
+            "status": "paid"
+          },
+          {
+            "id": "future",
+            "amount_cny": "50.00",
+            "status": "planned"
+          }
+        ],
+        "refunds": [
+          {
+            "id": "received",
+            "amount_cny": "10.00",
+            "status": "received"
+          },
+          {
+            "id": "pending",
+            "amount_cny": "40.00",
+            "status": "pending"
+          }
+        ],
+        "arrival_at_return_station": "2026-11-18T17:00:00+08:00",
+        "activity_evidence": {
+          "A1": "simulation:station-open-at-new-time"
+        },
+        "financial_evidence": {}
+      }
+    }
+  },
+  "workflow_input": {
+    "trip_id": "simulation-trip",
+    "formal_version": "v1",
+    "event_revision": 1,
+    "history_revision": 0,
+    "constraints": {
+      "fixed_activity_ids": [],
+      "user_authorizations": []
+    },
+    "current_plan": {
+      "activities": [
+        {
+          "activity_id": "A1",
+          "name": "simulation:A1",
+          "start_time": "2026-11-18T09:00:00+08:00",
+          "end_time": "2026-11-18T10:00:00+08:00",
+          "fixed": false
+        },
+        {
+          "activity_id": "A3",
+          "name": "simulation:A3",
+          "start_time": "2026-11-18T14:00:00+08:00",
+          "end_time": "2026-11-18T15:00:00+08:00",
+          "fixed": false
+        }
+      ]
+    },
+    "active_events": [
+      {
+        "event_id": "E1",
+        "event_type": "transport_disruption",
+        "status": "active",
+        "verification_status": "verified",
+        "severity": "medium",
+        "confidence": "0.9",
+        "start_time": null,
+        "end_time": null
+      }
+    ]
+  },
+  "workflow_output": {
+    "trip_id": "simulation-trip",
+    "base_version": "v1",
+    "event_ids": [
+      "E1"
+    ],
+    "draft_id": "WF-D1",
+    "draft_status": "awaiting_confirmation",
+    "warnings": [
+      "simulation:未调用AgentArts"
+    ],
+    "official_version_unchanged": true,
+    "options": [
+      {
+        "option_id": "OPT_A",
+        "feasibility": "feasible",
+        "changed_activity_ids": [
+          "A1"
+        ],
+        "additional_estimated_cost_cny": "0.00",
+        "warnings": [],
+        "requires_external_actions": [],
+        "proposed_schedule": [
+          {
+            "activity_id": "A1",
+            "name": "simulation:晚点列车",
+            "start_time": "2026-11-18T11:00:00+08:00",
+            "end_time": "2026-11-18T12:00:00+08:00",
+            "action": "reschedule",
+            "reason": "模拟晚点"
+          },
+          {
+            "activity_id": "A3",
+            "name": "simulation:博物馆",
+            "start_time": "2026-11-18T14:00:00+08:00",
+            "end_time": "2026-11-18T15:00:00+08:00",
+            "action": "keep",
+            "reason": "保留"
+          }
+        ]
+      }
+    ]
+  }
+}
