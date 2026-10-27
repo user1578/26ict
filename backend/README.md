@@ -6,6 +6,8 @@ Python 3.11、FastAPI、标准库 SQLite。提供预算与约束工具，以及�
 
 第五阶段新增 WF_Replan v0.1.0 离线适配及独立重规划评估工具，使用显式 simulation fixtures；不新增公开 API，不更改 SQLite v2 或既有确认门槛。运行命令、字段映射、候选支持资料和返程/固定活动未决语义见 [本地适配说明](../docs/wf_replan_adapter_notes.md)。
 
+第六阶段提供可独立运行的批量模拟实验入口 `python -m app.replan_experiments`，读取场景清单并复用现有适配/评估，输出 JSON、CSV、Markdown 和来源/复现信息。场景、统计分母、来源隔离及命令见 [批量实验说明](../docs/replan_experiments.md)。生成结果保留在 `backend/.experiment_results/`，不提交、不覆盖已有目录；当前不运行真实 AgentArts 数据。
+
 跨模块接口契约草案见 [docs/api_contract.md](../docs/api_contract.md)，待 A、C 共同确认后稳定。新增工具为 `search_places`、`get_place_rules`、`get_route_options`、`get_weather_risk`，HTTP 路径采用 `/api/tools/` 下对应连字符名称，且均需 `X-Tool-Key`。原预算、校验和旅行状态字段保持兼容，校验工具补充了返程到站时间不能早于活动结束的检查。
 
 配置示例见 `.env.example`；这些变量必须传入后端进程，本服务不自动加载 `.env`。外部 Key 不得传入 React，开发联调由 C 的本机服务代理在服务端注入工具密钥，不能使用 `VITE_` 变量打包密钥。未配置密钥或本地规则、服务超时/失败、缺字段、规则过期、超出预报日期范围均返回结构化 UNKNOWN；生产代码没有自动模拟数据模式。测试通过注入 MockTransport 标记 `simulated`，不会连接真实付费服务。

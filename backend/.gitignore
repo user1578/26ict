@@ -5,3 +5,6 @@
 travelguard.sqlite3-*
 travelguard.sqlite-*
 travelguard.db-*
+
+# Local batch experiment exports; retain on disk, do not commit generated reports.
+.experiment_results/

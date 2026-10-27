@@ -1,0 +1,284 @@
+{
+  "format_version": 1,
+  "experiment_id": "travelguard-phase6-simulation-v1",
+  "description": "Hand-authored offline simulation fixtures. No AgentArts or LLM calls; no measured LLM control group.",
+  "cases": [
+    {
+      "case_id": "normal",
+      "category": "normal",
+      "data_type": "simulation",
+      "origin": "hand_authored_fixture",
+      "input_file": "wf_replan_simulation.json",
+      "patches": []
+    },
+    {
+      "case_id": "continuous_old",
+      "category": "continuous_events",
+      "data_type": "simulation",
+      "origin": "hand_authored_fixture",
+      "input_file": "wf_replan_simulation.json",
+      "patches": [
+        {
+          "op": "replace",
+          "path": "/context/trip/event_revision",
+          "value": 2
+        },
+        {
+          "op": "replace",
+          "path": "/workflow_input/event_revision",
+          "value": 2
+        },
+        {
+          "op": "add",
+          "path": "/context/trip/events/-",
+          "value": {
+            "event_id": "B-E2",
+            "revision": 2,
+            "kind": "poi_closed",
+            "active": true,
+            "poi_id": "simulation:museum",
+            "effective_at": "2026-11-18T13:00:00+08:00",
+            "source": "simulation",
+            "evidence_ref": "simulation:closed",
+            "verification_status": "verified"
+          }
+        },
+        {
+          "op": "add",
+          "path": "/workflow_input/active_events/-",
+          "value": {
+            "event_id": "E2",
+            "event_type": "site_closure",
+            "status": "active",
+            "verification_status": "verified"
+          }
+        },
+        {
+          "op": "add",
+          "path": "/workflow_output/event_ids/-",
+          "value": "E2"
+        },
+        {
+          "op": "add",
+          "path": "/context/event_bindings/E2",
+          "value": "B-E2"
+        }
+      ]
+    },
+    {
+      "case_id": "continuous_repaired",
+      "category": "continuous_events",
+      "data_type": "simulation",
+      "origin": "hand_authored_fixture",
+      "input_file": "wf_replan_simulation.json",
+      "patches": [
+        {
+          "op": "replace",
+          "path": "/context/trip/event_revision",
+          "value": 2
+        },
+        {
+          "op": "replace",
+          "path": "/workflow_input/event_revision",
+          "value": 2
+        },
+        {
+          "op": "add",
+          "path": "/context/trip/events/-",
+          "value": {
+            "event_id": "B-E2",
+            "revision": 2,
+            "kind": "poi_closed",
+            "active": true,
+            "poi_id": "simulation:museum",
+            "effective_at": "2026-11-18T13:00:00+08:00",
+            "source": "simulation",
+            "evidence_ref": "simulation:closed",
+            "verification_status": "verified"
+          }
+        },
+        {
+          "op": "add",
+          "path": "/workflow_input/active_events/-",
+          "value": {
+            "event_id": "E2",
+            "event_type": "site_closure",
+            "status": "active",
+            "verification_status": "verified"
+          }
+        },
+        {
+          "op": "add",
+          "path": "/workflow_output/event_ids/-",
+          "value": "E2"
+        },
+        {
+          "op": "add",
+          "path": "/context/event_bindings/E2",
+          "value": "B-E2"
+        },
+        {
+          "op": "replace",
+          "path": "/workflow_output/options/0/proposed_schedule/1/activity_id",
+          "value": "A5"
+        },
+        {
+          "op": "replace",
+          "path": "/workflow_output/options/0/proposed_schedule/1/action",
+          "value": "new_candidate"
+        },
+        {
+          "op": "replace",
+          "path": "/context/option_support/OPT_A/removed_activity_ids",
+          "value": [
+            "A3"
+          ]
+        },
+        {
+          "op": "add",
+          "path": "/context/option_support/OPT_A/activities/A5",
+          "value": {
+            "id": "A5",
+            "poi_id": "simulation:park",
+            "start_at": "2026-11-18T14:00:00+08:00",
+            "end_at": "2026-11-18T15:00:00+08:00",
+            "transport_minutes_from_previous": 30,
+            "walking_minutes_from_previous": 10,
+            "opening_status": "confirmed_open",
+            "booking_required": false,
+            "booking_status": "unknown"
+          }
+        },
+        {
+          "op": "add",
+          "path": "/context/option_support/OPT_A/activity_evidence/A5",
+          "value": "simulation:park-open"
+        }
+      ]
+    },
+    {
+      "case_id": "no_safe_candidate",
+      "category": "no_safe_candidate",
+      "data_type": "simulation",
+      "origin": "hand_authored_fixture",
+      "input_file": "wf_replan_simulation.json",
+      "patches": [
+        {
+          "op": "replace",
+          "path": "/workflow_output/options",
+          "value": []
+        }
+      ]
+    },
+    {
+      "case_id": "locked_conflict",
+      "category": "historical_lock",
+      "data_type": "simulation",
+      "origin": "hand_authored_fixture",
+      "input_file": "wf_replan_simulation.json",
+      "patches": [
+        {
+          "op": "replace",
+          "path": "/context/trip/locked_activity_ids",
+          "value": [
+            "A1"
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "budget_insufficient",
+      "category": "budget",
+      "data_type": "simulation",
+      "origin": "hand_authored_fixture",
+      "input_file": "wf_replan_simulation.json",
+      "patches": [
+        {
+          "op": "replace",
+          "path": "/context/option_support/OPT_A/charges/1/amount_cny",
+          "value": "250.00"
+        },
+        {
+          "op": "replace",
+          "path": "/workflow_output/options/0/additional_estimated_cost_cny",
+          "value": "200.00"
+        }
+      ]
+    },
+    {
+      "case_id": "evidence_missing",
+      "category": "evidence",
+      "data_type": "simulation",
+      "origin": "hand_authored_fixture",
+      "input_file": "wf_replan_simulation.json",
+      "patches": [
+        {
+          "op": "replace",
+          "path": "/context/option_support/OPT_A/activity_evidence",
+          "value": {}
+        }
+      ]
+    },
+    {
+      "case_id": "old_version",
+      "category": "version_conflict",
+      "data_type": "simulation",
+      "origin": "hand_authored_fixture",
+      "input_file": "wf_replan_simulation.json",
+      "patches": [
+        {
+          "op": "replace",
+          "path": "/workflow_output/base_version",
+          "value": "v2"
+        }
+      ]
+    },
+    {
+      "case_id": "missing_date",
+      "category": "missing_information",
+      "data_type": "simulation",
+      "origin": "hand_authored_fixture",
+      "input_file": "wf_replan_simulation.json",
+      "patches": [
+        {
+          "op": "replace",
+          "path": "/workflow_output/options/0/proposed_schedule/0/start_time",
+          "value": "11:00"
+        }
+      ]
+    },
+    {
+      "case_id": "return_semantics",
+      "category": "unresolved_semantics",
+      "data_type": "simulation",
+      "origin": "hand_authored_fixture",
+      "input_file": "wf_replan_simulation.json",
+      "patches": [
+        {
+          "op": "add",
+          "path": "/workflow_input/constraints/return_deadline",
+          "value": "2026-11-18T15:30:00+08:00"
+        },
+        {
+          "op": "add",
+          "path": "/workflow_input/constraints/return_deadline_hard",
+          "value": true
+        }
+      ]
+    },
+    {
+      "case_id": "candidate_id_conflict",
+      "category": "unresolved_identifier",
+      "data_type": "simulation",
+      "origin": "hand_authored_fixture",
+      "input_file": "wf_replan_simulation.json",
+      "patches": [
+        {
+          "op": "replace",
+          "path": "/workflow_output/options/0/proposed_schedule/1/action",
+          "value": "new_candidate"
+        }
+      ]
+    }
+  ]
+}
