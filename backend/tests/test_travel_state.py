@@ -416,8 +416,8 @@ def test_snapshot_preserves_paid_history_and_pending_refunds_across_versions(cli
     assert confirm(client, "hide-paid", base_version=3, request_id="cannot-hide-paid").status_code == 422
 
 
-def workflow(client):
-    assert create(client, locked_activity_ids=["museum"]).status_code == 201
+def workflow(client, **trip_changes):
+    assert create(client, locked_activity_ids=["museum"], **trip_changes).status_code == 201
     assert event(client).status_code == 200
     assert draft(client).json()["validation"]["overall"] == "PASS"
     assert event(client, "E2", 1, kind="poi_closed", activity_id=None, earliest_start_at=None,
@@ -444,7 +444,11 @@ def workflow(client):
     return state
 
 
-def test_real_http_workflow_and_service_restart(database, monkeypatch):
+@pytest.mark.parametrize("trip_changes", [{}, {
+    "city": "武汉", "party_size": 3, "start_date": "2026-11-18", "end_date": "2026-11-19",
+    "preferences": {"stay_together": True},
+}], ids=["legacy", "complete-basics"])
+def test_real_http_workflow_and_service_restart(database, monkeypatch, trip_changes):
     """Start the actual ASGI server twice; no TestClient transport in this acceptance case."""
     monkeypatch.setenv("TRAVELGUARD_DB_PATH", str(database))
     monkeypatch.setenv("TRAVELGUARD_TOOL_API_KEY", KEY["X-Tool-Key"])
@@ -472,7 +476,9 @@ def test_real_http_workflow_and_service_restart(database, monkeypatch):
                         pytest.fail("Uvicorn failed to start")
                     time.sleep(0.05)
                 if run == 0:
-                    previous = workflow(http)
+                    previous = workflow(http, **trip_changes)
+                    for key, value in trip_changes.items():
+                        assert previous[key] == value
                 else:
                     assert http.get(ROOT, headers=KEY).json() == previous
                     assert http.get(f"{ROOT}/drafts/D1", headers=KEY).json()["status"] == "stale"

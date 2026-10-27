@@ -1,4 +1,4 @@
-# TravelGuard B 端 API 契约草案（第三阶段）
+# TravelGuard B 端 API 契约草案（第四阶段）
 
 状态：**供 A、B、C 联调确认的草案**，尚未经 A、C 共同确认，不作为已冻结的稳定版本。以本分支实际 `/openapi.json` 及 `backend/app/*schemas.py` 为字段定义；本文解释业务语义。保留既有预算、校验与旅行状态接口，不开发 A 的工作流或 C 的页面。
 
@@ -65,6 +65,39 @@
 
 ### 3.1 创建和读取示例
 
+#### 旅行基础信息与偏好（P6）
+
+以下字段位于 `CreateTrip` 请求和 `TripView` 响应顶层，POST 创建成功和 GET 读取均返回；版本、草案、异常和费用快照结构不变。
+
+| 字段 | JSON 类型 | 创建时必填 | 校验与缺省值 |
+| --- | --- | --- | --- |
+| `city` | string 或 null | 否（兼容旧请求） | 去除首尾空白后非空；缺省/null 表示未知 |
+| `party_size` | integer 或 null | 否（兼容旧请求） | 1～10；拒绝布尔值、字符串及小数；缺省/null 表示未知 |
+| `start_date` | string 或 null | 否（兼容旧请求） | 真实日历日期，严格 `YYYY-MM-DD`；缺省/null 表示未知 |
+| `end_date` | string 或 null | 否（兼容旧请求） | 同上；两日期均有值时，结束日期不得早于开始日期（允许同一天） |
+| `preferences` | object | 否 | 缺省返回 `{"stay_together":null}`，对象本身不接受 null |
+| `preferences.stay_together` | boolean 或 null | 否 | 仅接受 JSON true/false/null；缺省/null 表示未知，不自动设为 true |
+
+为兼容历史调用，四个基础字段可分别省略；只提供一个日期时另一个仍为 null，不推断日期。C 的新建表单应发送完整基础信息。日期不带时间和时区；活动和返程截止仍须带时区。当前只校验基础字段自身及日期先后，尚未增加活动所属城市、活动是否落在旅行日期范围内的核验。
+
+`preferences` 保存旅行意愿，与 `constraints` 中已有预算、单段步行和返程硬约束分开。**当前没有按成员划分的路线或多人全程同行校验算法**，`stay_together:true` 不产生同行检查 PASS，也不因该偏好未知而阻止旧请求创建；方案整体 PASS 不能解释为已验证全程同行。`party_size` 不自动乘入费用，`budget_cny` 仍是整趟旅行总预算。正式 V1 与后续确认仍要求全部现有必要核验 PASS。
+
+P6 与 `origin/cmx/frontend@1eaae97` 的只读核对结果如下（前端尚未接入真实 API，以下映射由 C 接入时实现）：
+
+| C 端现有字段 | B 端创建请求 | B 端读取响应 |
+| --- | --- | --- |
+| 表单 `city` / Trip `city` | `city` | `city` |
+| 表单 `partySize` / Trip `party_size` | 数值整数 `party_size` | `party_size` |
+| 表单 `startDate/endDate` / Trip `dates[0]/dates[1]` | `start_date/end_date` | `start_date/end_date`，C 可转回 dates 数组 |
+| 表单 `budget` / Trip `budget_cny` | 十进制金额 `budget_cny` | `constraints.budget_cny`（JSON 字符串） |
+| 表单 `walkingLimit` | `max_walking_minutes_per_leg` | `constraints.max_walking_minutes_per_leg` |
+| 模拟 Trip `constraints.stay_together`（当前固定 true） | `preferences.stay_together` | `preferences.stay_together` |
+| 表单 `endDate + returnTime` | 带目的地时区的 `return_deadline` | `constraints.return_deadline` |
+
+武汉示例的返程时区为 `+08:00`，不能直接使用浏览器所在时区。C 须处理旧数据的 null，不能把未知城市、人数或日期替换成虚构默认值；现有前端必填类型也需在接入适配时处理未知值。B 不接受 `dates`、`startDate/endDate`、顶层 `stay_together` 或创建请求中的嵌套 `constraints` 别名；这些不是此前支持的后端请求格式。
+
+#### 完整基础信息创建与读取
+
 下列行程、来源与金额全部为模拟例子，不代表地点真实规则。
 
 `POST /api/trips`：
@@ -72,6 +105,9 @@
 ```json
 {
   "request_id": "create-1", "trip_id": "demo-trip", "title": "模拟行程",
+  "city": "武汉", "party_size": 3,
+  "start_date": "2026-10-21", "end_date": "2026-10-21",
+  "preferences": {"stay_together": true},
   "budget_cny": "300.00", "max_walking_minutes_per_leg": 20,
   "return_deadline": "2026-10-21T18:00:00+08:00", "locked_activity_ids": [],
   "plan": {
@@ -93,6 +129,9 @@
 ```json
 {
   "trip_id": "demo-trip", "title": "模拟行程", "current_version": 1,
+  "city": "武汉", "party_size": 3,
+  "start_date": "2026-10-21", "end_date": "2026-10-21",
+  "preferences": {"stay_together": true},
   "event_revision": 0, "history_revision": 0,
   "constraints": {"budget_cny": "300.00", "max_walking_minutes_per_leg": 20,
                   "return_deadline": "2026-10-21T18:00:00+08:00"},
@@ -112,6 +151,40 @@
 | `EventView` | `event_id, revision` 加以下 `PutEvent` 的事实字段，不含 request_id/expected_event_revision |
 
 `current_plan.validation` 是生成该版本时的核验快照；之后发生异常时不会改写旧版本，前端必须同时读取当前 `events/event_revision`，不可只看旧 PASS 就认为异常已解决。
+
+#### 旧请求和 SQLite 兼容
+
+旧格式请求仍有效，例如：
+
+```json
+{
+  "request_id": "legacy-create-1", "trip_id": "legacy-trip", "title": "旧格式行程",
+  "budget_cny": "300.00",
+  "plan": {
+    "activities": [{
+      "id": "visit-1", "poi_id": "amap:B-demo",
+      "start_at": "2026-10-21T10:00:00+08:00", "end_at": "2026-10-21T11:00:00+08:00",
+      "opening_status": "confirmed_open"
+    }],
+    "activity_evidence": {"visit-1": "simulation:opening"}
+  }
+}
+```
+
+其响应的新增字段如下（仅摘录新增字段，完整 `TripView` 仍含正式版本、约束等）：
+
+```json
+{
+  "city": null, "party_size": null, "start_date": null, "end_date": null,
+  "preferences": {"stay_together": null}
+}
+```
+
+服务启动使用 `BEGIN IMMEDIATE` 事务，将已知 schema 0/1 升至 2：只向 `trips` 增加可空的 `city TEXT`、`party_size INTEGER`、`start_date TEXT`、`end_date TEXT`、`preferences_json TEXT`，并更新 `PRAGMA user_version`。新库经过同一流程创建为 2；已为 2 时重复初始化不重复迁移。旧行的新列保持 SQL NULL，响应中映射为未知，**不从标题、活动日期或人数估算信息**。
+
+迁移不删除/重建旧表，不重写既有约束、正式版本、草案、异常、费用或幂等回执；失败时新增列和版本号一同回滚。未知 schema 版本拒绝启动。未提供新信息的旧创建请求仍匹配原幂等指纹；旧回执由响应模型补齐新增 null 字段，不改变历史结果。向同一 request_id 添加已知基础信息或偏好是不同请求，返回 409，不能借重试回填旧旅行。本阶段未提供旅行基础信息编辑/回填接口。
+
+迁移在服务启动时生效，本次自动化测试仅操作临时库，未对真实业务库执行升级。实际运行前应停用旧服务并保留数据库备份；旧二进制不支持 schema 2，回退代码时不能直接沿用升级后的库，应使用升级前备份并核对升级后新增数据。现有正式方案及全部费用语义保持不变。
 
 ### 3.2 异常、候选与用户确认
 
@@ -349,6 +422,8 @@
 
 ## 6. A、C 联调待确认事项与能力边界
 
+- P6 的 B 端基础信息、SQLite 升级和响应已补齐；C 的字段适配和真实 FastAPI 接入尚未完成，不能把本草案称为已确认冻结的前后端契约。`stay_together` 为已持久化偏好，是否及如何实现多人同行核验待 A、C 协商。
+- C 现有模拟协议还有待适配差异：`formal_version` 对应 B 的 `current_version`，平铺活动对应 `current_plan.plan.activities`；`transport_delay/place_closure` 对应 `train_delay/poi_closed`，B 暂不支持 weather 异常；`awaiting_confirmation/superseded/confirmed` 对应 `pending/stale/committed`。C 的 `options[]` 与 B 的一草案一完整 `plan` 不能直接互传，接入方案及 AgentArts 规划/重规划入口待 A、C 确认，不由本阶段改动；确认时仍须通过 B 的 PASS 核验并携带三种版本/修订号。
 - A 确认六个工具映射及超时预算（路线最多3次各5秒），按 status、data_type、verification_status 和风险字段分别分支。UNKNOWN 应请求补充依据/人工核实，不生成假事实。候选只用 `/drafts`，正式变更必须经过 C 的用户确认和 `/confirm`。
 - C 确认同源开发代理的服务端鉴权、带时区时间、金额字符串、空值展示、三种草案状态及409后的刷新流程；不要把旧快照 PASS 当作当前异常已经处理。
 - A、C 确认地点 ID 对照与坐标来源。C 的地点资料应提供高德 ID 与 WGS84 坐标或可核实映射，不以名称猜测地点。C 继续维护自己的数据文件，B 仅消费经双方约定的规则 JSON 来源。

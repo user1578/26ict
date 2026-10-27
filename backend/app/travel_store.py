@@ -13,7 +13,7 @@ from .logic import calculate_budget
 from .schemas import Status
 from .travel_schemas import (
     ConfirmDraft, CreateDraft, CreateTrip, DraftView, EventFacts, EventView,
-    LockActivities, PutEvent, TravelPlan, TripConstraints, VersionView,
+    LockActivities, PutEvent, TravelPlan, TripConstraints, TripPreferences, VersionView,
 )
 from .travel_validation import budget_input, validate_snapshot
 
@@ -45,10 +45,10 @@ class TravelStore:
                 raise
 
     def initialize(self) -> None:
-        # Never reset or remove existing data. Future migrations must handle known versions explicitly.
+        # Schema changes and user_version advance atomically with the same worker write lock.
         with self.transaction(write=True) as db:
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1):
+            if version not in (0, 1, 2):
                 raise RuntimeError(f"不支持的旅行数据库版本：{version}")
             statements = [
                 """CREATE TABLE IF NOT EXISTS trips (
@@ -75,10 +75,23 @@ class TravelStore:
             ]
             for statement in statements:
                 db.execute(statement)
-            db.execute("PRAGMA user_version = 1")
+            if version < 2:
+                # Nullable additions leave every legacy value unknown; no snapshot/receipt rewrite.
+                for column in ("city TEXT", "party_size INTEGER", "start_date TEXT", "end_date TEXT",
+                               "preferences_json TEXT"):
+                    db.execute(f"ALTER TABLE trips ADD COLUMN {column}")
+                db.execute("PRAGMA user_version = 2")
 
     def _mutate(self, trip_id, operation, body, action):
-        fingerprint = sha256(encode({"operation": operation, "body": body.model_dump(mode="json")})
+        request_body = body.model_dump(mode="json")
+        if isinstance(body, CreateTrip):
+            # Keep normalized v1 create requests compatible with their persisted fingerprints.
+            for field in ("city", "party_size", "start_date", "end_date"):
+                if request_body[field] is None:
+                    request_body.pop(field)
+            if body.preferences.stay_together is None:
+                request_body.pop("preferences")
+        fingerprint = sha256(encode({"operation": operation, "body": request_body})
                              .encode("utf-8")).hexdigest()
         with self.transaction(write=True) as db:
             receipt = db.execute("SELECT * FROM requests WHERE trip_id=? AND request_id=?",
@@ -127,6 +140,10 @@ class TravelStore:
         trip = self._trip(db, trip_id)
         return {
             "trip_id": trip_id, "title": trip["title"], "current_version": trip["current_version"],
+            "city": trip["city"], "party_size": trip["party_size"],
+            "start_date": trip["start_date"], "end_date": trip["end_date"],
+            "preferences": (json.loads(trip["preferences_json"]) if trip["preferences_json"] is not None
+                            else TripPreferences().model_dump(mode="json")),
             "event_revision": trip["event_revision"], "history_revision": trip["history_revision"],
             "constraints": json.loads(trip["constraints_json"]),
             "locked_activity_ids": json.loads(trip["locked_ids_json"]),
@@ -185,8 +202,12 @@ class TravelStore:
             constraints = TripConstraints.model_validate(body.model_dump(include=set(TripConstraints.model_fields)))
             validation = validate_snapshot(body.plan, constraints, [], [])
             self._require_pass(validation)
-            db.execute("INSERT INTO trips VALUES (?,?,?,1,0,0,?)",
-                       (body.trip_id, body.title, constraints.model_dump_json(), encode(body.locked_activity_ids)))
+            db.execute("INSERT INTO trips (trip_id,title,constraints_json,current_version,event_revision,"
+                       "history_revision,locked_ids_json,city,party_size,start_date,end_date,preferences_json) "
+                       "VALUES (?,?,?,1,0,0,?,?,?,?,?,?)",
+                       (body.trip_id, body.title, constraints.model_dump_json(), encode(body.locked_activity_ids),
+                        body.city, body.party_size, body.start_date.isoformat() if body.start_date else None,
+                        body.end_date.isoformat() if body.end_date else None, body.preferences.model_dump_json()))
             self._insert_version(db, body.trip_id, 1, body.plan, constraints, validation, 0, 0)
             return self._view(db, body.trip_id)
         return self._mutate(body.trip_id, "create_trip", body, action)

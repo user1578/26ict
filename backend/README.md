@@ -26,7 +26,7 @@ $env:TRAVELGUARD_TOOL_API_KEY = '自行设置本地临时密钥'
 
 默认数据库为 `backend/travelguard.local.sqlite3`，不会在模块导入时创建，服务启动时初始化表。可在启动进程前设置 `TRAVELGUARD_DB_PATH` 指向本项目 `backend/` 内的测试数据库文件；重启使用同一路径会读回既有状态。父目录须已存在，不支持 `:memory:`（每次请求使用独立连接）。SQLite 无额外依赖。数据库及本地恢复日志不得提交，后端忽略规则保留这些文件在磁盘上。
 
-数据库 schema 版本为 1：仅创建缺失表，不重置已有数据；遇到未知版本会停止启动。SQLite 默认回滚日志和 `foreign_keys=ON`，写操作使用 `BEGIN IMMEDIATE`。这是单机方案，尚无多租户隔离、生产认证和迁移运维工具。
+数据库 schema 版本为 2：启动时在同一写事务中将已知旧版本 0/1 升级，向旅行表增加可空的基础信息和偏好列，不重置或重写原有业务数据。旧数据的新字段保持未知；迁移失败整体回滚，遇到未知版本会停止启动。SQLite 默认回滚日志和 `foreign_keys=ON`，写操作使用 `BEGIN IMMEDIATE`。实际升级前应停止旧服务并备份数据库；旧二进制不支持 schema 2，不能直接用旧代码打开升级后的库。这是单机方案，尚无多租户隔离、生产认证和迁移运维工具。
 
 本地测试（在backend目录）：
 
@@ -78,6 +78,8 @@ $env:TRAVELGUARD_TOOL_API_KEY = '自行设置本地临时密钥'
 
 ### 初始旅行与方案
 
+创建请求及旅行响应新增可选的 `city`、`party_size`（JSON 整数 1～10）、`start_date/end_date`（严格 `YYYY-MM-DD`，结束不早于开始），缺省/null 均保持未知以兼容旧请求。同行偏好放在独立的 `preferences.stay_together`（布尔或 null），保存偏好但尚无多人同行核验；整体 PASS 不代表已验证全程同行。日期、人数不改变费用或既有硬约束语义；完整字段映射和迁移边界见接口契约 3.1。
+
 `POST /api/trips` 示例（完整武汉两日游数据见验收测试）：
 
 ~~~json
@@ -85,6 +87,11 @@ $env:TRAVELGUARD_TOOL_API_KEY = '自行设置本地临时密钥'
   "request_id": "create-1",
   "trip_id": "wuhan",
   "title": "武汉行程",
+  "city": "武汉",
+  "party_size": 3,
+  "start_date": "2026-11-18",
+  "end_date": "2026-11-19",
+  "preferences": {"stay_together": true},
   "budget_cny": "300.00",
   "max_walking_minutes_per_leg": 20,
   "return_deadline": "2026-11-19T17:00:00+08:00",

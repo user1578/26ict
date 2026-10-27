@@ -1,7 +1,8 @@
 """Persistence API contracts; existing stateless tool contracts stay unchanged."""
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
+import re
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
@@ -72,7 +73,36 @@ class TripConstraints(Contract):
         return self
 
 
-class CreateTrip(TripConstraints):
+class TripPreferences(Contract):
+    # Stored intent only; the validator has no per-traveler routes or togetherness algorithm.
+    stay_together: bool | None = Field(default=None, strict=True)
+
+
+class TripBasics(Contract):
+    city: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)] | None = None
+    party_size: int | None = Field(default=None, strict=True, ge=1, le=10)
+    start_date: date | None = None
+    end_date: date | None = None
+    preferences: TripPreferences = Field(default_factory=TripPreferences)
+
+    @field_validator("start_date", "end_date", mode="before")
+    @classmethod
+    def calendar_date(cls, value):
+        if value is None or type(value) is date:
+            return value
+        # Pydantic also accepts timestamps/datetimes as dates unless restricted here.
+        if not isinstance(value, str) or re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value) is None:
+            raise ValueError("旅行日期必须为YYYY-MM-DD格式")
+        return date.fromisoformat(value)
+
+    @model_validator(mode="after")
+    def ordered_dates(self):
+        if self.start_date is not None and self.end_date is not None and self.end_date < self.start_date:
+            raise ValueError("结束日期不能早于开始日期")
+        return self
+
+
+class CreateTrip(TripBasics, TripConstraints):
     request_id: Identifier
     trip_id: Identifier
     title: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
@@ -201,7 +231,7 @@ class DraftView(RevisionTokens):
     created_at: datetime
 
 
-class TripView(Contract):
+class TripView(TripBasics):
     trip_id: str
     title: str
     current_version: int
