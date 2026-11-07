@@ -2,9 +2,17 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      try {
+        document.documentElement.dataset.theme = localStorage.getItem('tg-theme') || 'dark'
+      } catch {
+        document.documentElement.dataset.theme = 'dark'
+      }
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>TravelGuard · 旅途智盾</title>
+    <meta name="theme-color" content="#101a1e" />
+    <title>TravelGuard · 实时智能体控制台</title>
   </head>
   <body>
     <div id="root"></div>

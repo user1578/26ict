@@ -1,0 +1,69 @@
+{
+  "records": [
+    {
+      "poi_id": "local:wh-hubei-museum",
+      "opening_status": "confirmed_open",
+      "booking_required": true,
+      "booking_note": "模拟：需提前通过官方渠道预约（人工构造，未核实）",
+      "ticket_price_cny": "0.00",
+      "valid_from": "2026-11-01T00:00:00+08:00",
+      "valid_until": "2026-12-31T23:59:59+08:00",
+      "source_ref": "hand-authored-simulation",
+      "retrieved_at": "2026-10-30T00:00:00Z",
+      "data_type": "simulated",
+      "verification_status": "unverified"
+    },
+    {
+      "poi_id": "local:wh-east-lake-greenway",
+      "opening_status": "confirmed_open",
+      "booking_required": false,
+      "booking_note": null,
+      "ticket_price_cny": "0.00",
+      "valid_from": "2026-11-01T00:00:00+08:00",
+      "valid_until": "2026-12-31T23:59:59+08:00",
+      "source_ref": "hand-authored-simulation",
+      "retrieved_at": "2026-10-30T00:00:00Z",
+      "data_type": "simulated",
+      "verification_status": "unverified"
+    },
+    {
+      "poi_id": "local:wh-yellow-crane-tower",
+      "opening_status": "confirmed_open",
+      "booking_required": false,
+      "booking_note": null,
+      "ticket_price_cny": "70.00",
+      "valid_from": "2026-11-01T00:00:00+08:00",
+      "valid_until": "2026-12-31T23:59:59+08:00",
+      "source_ref": "hand-authored-simulation",
+      "retrieved_at": "2026-10-30T00:00:00Z",
+      "data_type": "simulated",
+      "verification_status": "unverified"
+    },
+    {
+      "poi_id": "local:wh-hubuxiang",
+      "opening_status": "confirmed_open",
+      "booking_required": false,
+      "booking_note": null,
+      "ticket_price_cny": "0.00",
+      "valid_from": "2026-11-01T00:00:00+08:00",
+      "valid_until": "2026-12-31T23:59:59+08:00",
+      "source_ref": "hand-authored-simulation",
+      "retrieved_at": "2026-10-30T00:00:00Z",
+      "data_type": "simulated",
+      "verification_status": "unverified"
+    },
+    {
+      "poi_id": "local:wh-xinhai-revolution-museum",
+      "opening_status": "confirmed_open",
+      "booking_required": false,
+      "booking_note": null,
+      "ticket_price_cny": "0.00",
+      "valid_from": "2026-11-01T00:00:00+08:00",
+      "valid_until": "2026-12-31T23:59:59+08:00",
+      "source_ref": "hand-authored-simulation",
+      "retrieved_at": "2026-10-30T00:00:00Z",
+      "data_type": "simulated",
+      "verification_status": "unverified"
+    }
+  ]
+}

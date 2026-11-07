@@ -1,0 +1,172 @@
+/* ============================================================
+   TravelGuard design tokens — 「实时智能体控制台」
+   双主题：:root[data-theme=dark] 默认 / :root[data-theme=light]
+   规范来源：.impeccable.md + handover/11-前端重设计-Brief
+   ============================================================ */
+
+:root {
+  --font-display: 'Chakra Petch', 'Noto Sans SC', 'Microsoft YaHei UI', system-ui, sans-serif;
+  --font-body: 'Noto Sans SC', 'Microsoft YaHei UI', 'Segoe UI', system-ui, sans-serif;
+
+  /* 4pt spacing scale */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
+  --s7: 48px;
+  --s8: 64px;
+  --s9: 96px;
+
+  --r-xs: 2px;
+  --r-sm: 4px;
+  --r-md: 8px;
+  --r-pill: 999px;
+
+  /* fixed rem scale, ratio 1.25 */
+  --t-xs: 0.75rem;
+  --t-sm: 0.8125rem;
+  --t-base: 0.875rem;
+  --t-md: 1rem;
+  --t-lg: 1.25rem;
+  --t-xl: 1.5625rem;
+  --t-2xl: 1.9375rem;
+  --t-3xl: 2.4375rem;
+
+  --dur-fast: 160ms;
+  --dur: 240ms;
+  --dur-slow: 320ms;
+  --dur-slower: 520ms;
+  --ease: cubic-bezier(0.25, 1, 0.5, 1);
+
+  --w-max: 1480px;
+  --shadow-dock: 0 28px 70px -38px oklch(0 0 0 / 0.75);
+}
+
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: oklch(0.165 0.018 218);
+  --bg-soft: oklch(0.19 0.018 218);
+  --surface: oklch(0.205 0.02 218);
+  --surface-2: oklch(0.235 0.021 218);
+  --surface-3: oklch(0.275 0.022 218);
+  --text: oklch(0.94 0.012 90);
+  --text-2: oklch(0.76 0.018 210);
+  --text-3: oklch(0.61 0.018 210);
+  --line: oklch(0.315 0.02 218);
+  --line-strong: oklch(0.43 0.022 218);
+  --pass: oklch(0.78 0.09 158);
+  --warn: oklch(0.84 0.11 85);
+  --unknown: oklch(0.72 0.05 255);
+  --fail: oklch(0.68 0.15 32);
+  --action-bg: oklch(0.94 0.012 90);
+  --action-text: oklch(0.2 0.02 218);
+  --action-hover: oklch(0.985 0.008 90);
+  --focus: oklch(0.84 0.11 85);
+  --overlay: oklch(0.1 0.015 218 / 0.72);
+  --skeleton: oklch(0.27 0.02 218);
+  --dot: oklch(1 0 0 / 0.055);
+  --hatch: oklch(0.84 0.11 85 / 0.16);
+  --tone-soft: 0.16;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: oklch(0.962 0.008 95);
+  --bg-soft: oklch(0.938 0.008 95);
+  --surface: oklch(0.985 0.004 95);
+  --surface-2: oklch(0.95 0.006 95);
+  --surface-3: oklch(0.925 0.008 95);
+  --text: oklch(0.24 0.02 225);
+  --text-2: oklch(0.42 0.02 225);
+  --text-3: oklch(0.55 0.02 225);
+  --line: oklch(0.855 0.012 225);
+  --line-strong: oklch(0.7 0.015 225);
+  --pass: oklch(0.48 0.1 158);
+  --warn: oklch(0.55 0.12 70);
+  --unknown: oklch(0.46 0.05 255);
+  --fail: oklch(0.48 0.16 30);
+  --action-bg: oklch(0.24 0.02 225);
+  --action-text: oklch(0.975 0.006 95);
+  --action-hover: oklch(0.33 0.02 225);
+  --focus: oklch(0.48 0.16 30);
+  --overlay: oklch(0.2 0.02 225 / 0.32);
+  --skeleton: oklch(0.9 0.01 95);
+  --dot: oklch(0.25 0.02 225 / 0.05);
+  --hatch: oklch(0.55 0.12 70 / 0.14);
+  --tone-soft: 0.12;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: var(--t-base);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+a {
+  color: inherit;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--warn) 45%, transparent);
+  color: var(--text);
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

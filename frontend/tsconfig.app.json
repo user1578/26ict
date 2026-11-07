@@ -16,6 +16,9 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
+    /* JSON 数据（仓库根 data/ 下的 C 侧数据文件） */
+    "resolveJsonModule": true,
+
     /* Linting */
     "noUnusedLocals": true,
     "noUnusedParameters": true,

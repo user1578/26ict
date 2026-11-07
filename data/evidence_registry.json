@@ -1,0 +1,69 @@
+{
+  "format_version": 1,
+  "note": "人工构造的模拟证据引用，仅用于本地演示的 activity_evidence / financial_evidence；不代表现实开放、预约或付款事实。",
+  "records": {
+    "simulation:opening:hubei-museum": {
+      "kind": "opening",
+      "poi_id": "local:wh-hubei-museum",
+      "summary": "模拟：湖北省博物馆 2026-11 常规开放（人工构造）",
+      "data_type": "simulated",
+      "verification_status": "unverified",
+      "source_ref": "hand-authored-simulation",
+      "retrieved_at": "2026-10-30T00:00:00Z"
+    },
+    "simulation:opening:east-lake-greenway": {
+      "kind": "opening",
+      "poi_id": "local:wh-east-lake-greenway",
+      "summary": "模拟：东湖绿道 2026-11 常规开放（人工构造）",
+      "data_type": "simulated",
+      "verification_status": "unverified",
+      "source_ref": "hand-authored-simulation",
+      "retrieved_at": "2026-10-30T00:00:00Z"
+    },
+    "simulation:opening:yellow-crane-tower": {
+      "kind": "opening",
+      "poi_id": "local:wh-yellow-crane-tower",
+      "summary": "模拟：黄鹤楼 2026-11 常规开放（人工构造）",
+      "data_type": "simulated",
+      "verification_status": "unverified",
+      "source_ref": "hand-authored-simulation",
+      "retrieved_at": "2026-10-30T00:00:00Z"
+    },
+    "simulation:opening:hubuxiang": {
+      "kind": "opening",
+      "poi_id": "local:wh-hubuxiang",
+      "summary": "模拟：户部巷 2026-11 常规开放（人工构造）",
+      "data_type": "simulated",
+      "verification_status": "unverified",
+      "source_ref": "hand-authored-simulation",
+      "retrieved_at": "2026-10-30T00:00:00Z"
+    },
+    "simulation:opening:xinhai-revolution-museum": {
+      "kind": "opening",
+      "poi_id": "local:wh-xinhai-revolution-museum",
+      "summary": "模拟：辛亥革命博物院 2026-11 常规开放（人工构造）",
+      "data_type": "simulated",
+      "verification_status": "unverified",
+      "source_ref": "hand-authored-simulation",
+      "retrieved_at": "2026-10-30T00:00:00Z"
+    },
+    "simulation:booking:hubei-museum": {
+      "kind": "booking",
+      "poi_id": "local:wh-hubei-museum",
+      "summary": "模拟：湖北省博物馆需提前预约（人工构造，未核实；不代表个人预约成功）",
+      "data_type": "simulated",
+      "verification_status": "unverified",
+      "source_ref": "hand-authored-simulation",
+      "retrieved_at": "2026-10-30T00:00:00Z"
+    },
+    "simulation:financial:paid-yellow-crane-ticket": {
+      "kind": "financial",
+      "poi_id": null,
+      "summary": "模拟：黄鹤楼门票 70.00 元已支付（人工构造的付款记录，非真实交易）",
+      "data_type": "simulated",
+      "verification_status": "unverified",
+      "source_ref": "hand-authored-simulation",
+      "retrieved_at": "2026-10-30T00:00:00Z"
+    }
+  }
+}

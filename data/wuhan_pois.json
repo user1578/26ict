@@ -1,0 +1,97 @@
+{
+  "format_version": 1,
+  "city": "武汉",
+  "note": "人工构造的模拟地点目录，仅用于本地演示；未使用高德/和风真实接口核验，amap 映射待补。",
+  "records": [
+    {
+      "poi_id": "local:wh-hubei-museum",
+      "name": "湖北省博物馆",
+      "amap_id": null,
+      "amap_mapping_status": "unverified",
+      "address": "武汉市武昌区东湖路160号",
+      "coordinates": {
+        "gcj02": {"longitude": 114.3656, "latitude": 30.5621},
+        "wgs84": {"longitude": 114.3641, "latitude": 30.5596}
+      },
+      "coordinate_note": "模拟近似坐标，未调用地图接口核验",
+      "category": "museum",
+      "indoor": true,
+      "data_type": "simulated",
+      "verification_status": "unverified",
+      "source_ref": "hand-authored-simulation",
+      "retrieved_at": "2026-10-30T00:00:00Z"
+    },
+    {
+      "poi_id": "local:wh-east-lake-greenway",
+      "name": "东湖绿道",
+      "amap_id": null,
+      "amap_mapping_status": "unverified",
+      "address": "武汉市武昌区东湖风景区内（湖中道沿线）",
+      "coordinates": {
+        "gcj02": {"longitude": 114.4100, "latitude": 30.5500},
+        "wgs84": {"longitude": 114.4085, "latitude": 30.5475}
+      },
+      "coordinate_note": "模拟近似坐标，未调用地图接口核验",
+      "category": "park",
+      "indoor": false,
+      "data_type": "simulated",
+      "verification_status": "unverified",
+      "source_ref": "hand-authored-simulation",
+      "retrieved_at": "2026-10-30T00:00:00Z"
+    },
+    {
+      "poi_id": "local:wh-yellow-crane-tower",
+      "name": "黄鹤楼",
+      "amap_id": null,
+      "amap_mapping_status": "unverified",
+      "address": "武汉市武昌区蛇山西山坡特1号",
+      "coordinates": {
+        "gcj02": {"longitude": 114.3025, "latitude": 30.5453},
+        "wgs84": {"longitude": 114.3010, "latitude": 30.5428}
+      },
+      "coordinate_note": "模拟近似坐标，未调用地图接口核验",
+      "category": "landmark",
+      "indoor": false,
+      "data_type": "simulated",
+      "verification_status": "unverified",
+      "source_ref": "hand-authored-simulation",
+      "retrieved_at": "2026-10-30T00:00:00Z"
+    },
+    {
+      "poi_id": "local:wh-hubuxiang",
+      "name": "户部巷",
+      "amap_id": null,
+      "amap_mapping_status": "unverified",
+      "address": "武汉市武昌区户部巷（民主路入口）",
+      "coordinates": {
+        "gcj02": {"longitude": 114.3055, "latitude": 30.5480},
+        "wgs84": {"longitude": 114.3040, "latitude": 30.5455}
+      },
+      "coordinate_note": "模拟近似坐标，未调用地图接口核验",
+      "category": "food_street",
+      "indoor": false,
+      "data_type": "simulated",
+      "verification_status": "unverified",
+      "source_ref": "hand-authored-simulation",
+      "retrieved_at": "2026-10-30T00:00:00Z"
+    },
+    {
+      "poi_id": "local:wh-xinhai-revolution-museum",
+      "name": "辛亥革命博物院",
+      "amap_id": null,
+      "amap_mapping_status": "unverified",
+      "address": "武汉市武昌区武珞路1号（首义广场）",
+      "coordinates": {
+        "gcj02": {"longitude": 114.3007, "latitude": 30.5519},
+        "wgs84": {"longitude": 114.2992, "latitude": 30.5494}
+      },
+      "coordinate_note": "模拟近似坐标，未调用地图接口核验",
+      "category": "museum",
+      "indoor": true,
+      "data_type": "simulated",
+      "verification_status": "unverified",
+      "source_ref": "hand-authored-simulation",
+      "retrieved_at": "2026-10-30T00:00:00Z"
+    }
+  ]
+}

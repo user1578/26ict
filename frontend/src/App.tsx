@@ -1,13 +1,35 @@
-import { useState } from 'react'
-import './App.css'
-import { SourceBadge } from './components/Badges.tsx'
-import { BudgetPanel } from './components/BudgetPanel.tsx'
-import { CreateTripForm } from './components/CreateTripForm.tsx'
-import type { TripFormValues } from './components/CreateTripForm.tsx'
-import { DraftPanel } from './components/DraftPanel.tsx'
-import { Timeline } from './components/Timeline.tsx'
-import { applyOption, buildTrip, createClosureDraft, createDelayDraft } from './services/demoApi.ts'
-import type { Draft, DraftOption, Trip, TripEvent, VersionRecord } from './types.ts'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { AgentRail } from './components/AgentRail.tsx'
+import { BudgetRail } from './components/BudgetRail.tsx'
+import { DecisionDock } from './components/DecisionDock.tsx'
+import { HistoryDrawer } from './components/HistoryDrawer.tsx'
+import { MissionBar } from './components/MissionBar.tsx'
+import { RouteSpine } from './components/RouteSpine.tsx'
+import { SetupScreen, type TripFormValues } from './components/SetupScreen.tsx'
+import { SignalSheet } from './components/SignalSheet.tsx'
+import { CheckList } from './components/ui.tsx'
+import { useTheme } from './hooks/useTheme.ts'
+import { readTripId, syncUrl } from './lib/url.ts'
+import { ApiError, describeApiError } from './services/apiError.ts'
+import {
+  confirmTrace,
+  createPlanTrace,
+  reportEventTrace,
+  restoreTrace,
+  type TraceRun,
+} from './services/agentTrace.ts'
+import { apiModeLabel, createApi, resolveApiMode } from './services/client.ts'
+import {
+  buildCandidatePlans,
+  buildClosureEvent,
+  buildCreateTripRequest,
+  buildDelayEvent,
+  buildDraftRequests,
+  newId,
+  nextEventId,
+  type TripFormInput,
+} from './services/planner.ts'
+import type { DraftView, EventKind, TripView, Validation, VersionView } from './types.ts'
 
 const DEFAULT_FORM: TripFormValues = {
   city: '武汉',
@@ -17,32 +39,85 @@ const DEFAULT_FORM: TripFormValues = {
   budget: '1300',
   walkingLimit: '20',
   returnTime: '17:00',
+  stayTogether: true,
 }
 
-const eventLabels: Record<TripEvent['type'], string> = {
-  transport_delay: '交通延误',
-  weather: '天气异常',
-  place_closure: '景区关闭',
-}
+const RECOVERABLE_CODES = new Set([
+  'revision_conflict',
+  'draft_token_conflict',
+  'draft_stale',
+  'event_set_conflict',
+])
+
+type Sheet = 'signal' | 'history' | null
 
 export default function App() {
+  const [mode] = useState(() => resolveApiMode())
+  const api = useMemo(() => createApi(mode), [mode])
+  const { theme, toggle: toggleTheme } = useTheme()
+
   const [form, setForm] = useState<TripFormValues>(DEFAULT_FORM)
   const [formError, setFormError] = useState<string | null>(null)
-  const [trip, setTrip] = useState<Trip | null>(null)
-  const [events, setEvents] = useState<TripEvent[]>([])
-  const [drafts, setDrafts] = useState<Draft[]>([])
-  const [versions, setVersions] = useState<VersionRecord[]>([])
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [errorValidation, setErrorValidation] = useState<Validation | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [trip, setTrip] = useState<TripView | null>(null)
+  const [drafts, setDrafts] = useState<DraftView[]>([])
+  const [versions, setVersions] = useState<VersionView[]>([])
+  const [trace, setTrace] = useState<TraceRun | null>(null)
+  const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null)
+  const [sheet, setSheet] = useState<Sheet>(null)
+  const [restoring, setRestoring] = useState(false)
 
   const handleChange = (patch: Partial<TripFormValues>) => {
-    setForm((prev) => ({ ...prev, ...patch }))
+    setForm((previous) => ({ ...previous, ...patch }))
     setFormError(null)
   }
 
-  const handleCreate = () => {
+  const refresh = useCallback(
+    async (tripId: string) => {
+      const [nextTrip, nextDrafts, nextVersions] = await Promise.all([
+        api.getTrip(tripId),
+        api.getDrafts(tripId),
+        api.getVersions(tripId),
+      ])
+      setTrip(nextTrip)
+      setDrafts(nextDrafts)
+      setVersions(nextVersions.length > 0 ? nextVersions : [nextTrip.current_plan])
+      return nextTrip
+    },
+    [api],
+  )
+
+  const handleError = useCallback(
+    async (caught: unknown, tripId: string | null) => {
+      const apiError = caught instanceof ApiError ? caught : null
+      setError(describeApiError(caught))
+      setErrorValidation(apiError?.validation ?? null)
+      if (apiError && tripId && RECOVERABLE_CODES.has(apiError.code)) {
+        try {
+          await refresh(tripId)
+          setNotice('服务端状态已变化，已刷新最新版本与候选；请重新对比后再操作。')
+        } catch {
+          // 刷新失败时保留原始错误
+        }
+      }
+    },
+    [refresh],
+  )
+
+  const rememberTrip = useCallback(
+    (nextTrip: TripView) => {
+      if (mode === 'real') syncUrl(nextTrip.trip_id, mode)
+    },
+    [mode],
+  )
+
+  const handleCreate = async () => {
     const partySize = Number(form.partySize)
-    const budgetCny = Number(form.budget)
-    const walkingLimit = Number(form.walkingLimit)
+    const walkingLimit = form.walkingLimit.trim() === '' ? null : Number(form.walkingLimit)
+    const budget = form.budget.trim()
 
     if (!form.city.trim()) {
       setFormError('请填写城市')
@@ -56,237 +131,276 @@ export default function App() {
       setFormError('返回日期不能早于出发日期')
       return
     }
-    if (!Number.isFinite(partySize) || partySize < 1 || partySize > 10) {
-      setFormError('同行人数应在 1～10 人之间')
+    if (!Number.isInteger(partySize) || partySize < 1 || partySize > 10) {
+      setFormError('同行人数必须是 1～10 的整数')
       return
     }
-    if (!Number.isFinite(budgetCny) || budgetCny <= 0) {
-      setFormError('预算必须大于 0')
+    if (!/^\d+(\.\d{1,2})?$/.test(budget) || Number(budget) <= 0) {
+      setFormError('预算必须是大于 0、最多两位小数的数字')
       return
     }
-    if (!Number.isFinite(walkingLimit) || walkingLimit < 0) {
-      setFormError('单段步行上限不能为负数')
+    if (walkingLimit !== null && (!Number.isInteger(walkingLimit) || walkingLimit < 0)) {
+      setFormError('单段步行上限必须是非负整数')
       return
     }
 
-    const created = buildTrip({
+    const input: TripFormInput = {
       city: form.city.trim(),
       startDate: form.startDate,
       endDate: form.endDate,
       partySize,
-      budgetCny,
+      budgetCny: budget,
       walkingLimit,
       returnTime: form.returnTime,
-    })
+      stayTogether: form.stayTogether,
+    }
 
-    setTrip(created)
-    setEvents([])
-    setDrafts([])
-    setVersions([{ formal_version: 1, created_at: new Date().toISOString(), note: '生成初始正式行程（模拟）' }])
-    setNotice('已生成模拟正式行程 V1；尚未连接 FastAPI 与 AgentArts。')
+    setBusy(true)
     setFormError(null)
+    setError(null)
+    setErrorValidation(null)
+    try {
+      const created = await api.createTrip(buildCreateTripRequest(input))
+      setTrip(created)
+      setDrafts([])
+      setVersions([created.current_plan])
+      setTrace(createPlanTrace(created))
+      setSelectedDraftId(null)
+      setNotice(
+        `已创建正式版本 V1（${apiModeLabel(mode)}），核验 ${created.current_plan.validation.overall}。初始方案由前端演示规划器生成，证据为模拟数据。`,
+      )
+      rememberTrip(created)
+    } catch (caught) {
+      await handleError(caught, null)
+    } finally {
+      setBusy(false)
+    }
   }
 
-  const handleDelay = () => {
-    if (!trip) return
-    if (events.some((event) => event.type === 'transport_delay')) {
-      setNotice('延误已经上报过了（E001）。')
-      return
+  const reportEvent = async (
+    build: (fresh: TripView) => ReturnType<typeof buildDelayEvent>,
+    label: string,
+    kind: EventKind,
+  ) => {
+    if (!trip || busy) return
+    setBusy(true)
+    setError(null)
+    setErrorValidation(null)
+    setSheet(null)
+    try {
+      const fresh = await api.getTrip(trip.trip_id)
+      const eventId = nextEventId(fresh)
+      await api.putEvent(fresh.trip_id, eventId, build(fresh))
+      const updated = await api.getTrip(fresh.trip_id)
+      const candidates = buildCandidatePlans(updated)
+      const draftRequests = buildDraftRequests(updated, candidates)
+      for (const draftRequest of draftRequests) {
+        await api.createDraft(updated.trip_id, draftRequest)
+      }
+      const refreshed = await refresh(fresh.trip_id)
+      setTrace(reportEventTrace(refreshed ?? updated, kind, eventId))
+      setSelectedDraftId(null)
+      setNotice(
+        `${label}：已记录 ${eventId}（模拟上报），生成 ${draftRequests.length} 份候选草案；请在决策坞对比后确认。`,
+      )
+      rememberTrip(updated)
+    } catch (caught) {
+      await handleError(caught, trip.trip_id)
+    } finally {
+      setBusy(false)
     }
-    const revision = trip.event_revision + 1
-    const result = createDelayDraft(trip, revision)
-    setTrip({ ...trip, event_revision: revision })
-    setEvents((prev) => [...prev, result.event])
-    setDrafts((prev) => [...prev, result.draft])
-    setNotice('已记录 E001（延误 45 分钟），生成候选 D001。')
   }
 
-  const handleClosure = () => {
-    if (!trip) return
-    if (!events.some((event) => event.type === 'transport_delay')) {
-      setNotice('请先上报延误，再上报闭馆，才能演示旧草案失效。')
-      return
+  const handleConfirm = async (draft: DraftView) => {
+    if (!trip || busy) return
+    setBusy(true)
+    setError(null)
+    setErrorValidation(null)
+    try {
+      const version = await api.confirmDraft(trip.trip_id, draft.draft_id, {
+        request_id: newId('confirm'),
+        base_version: draft.base_version,
+        event_revision: draft.event_revision,
+        history_revision: draft.history_revision,
+        user_confirmed: true,
+        confirmed_by: 'demo-user',
+      })
+      const refreshed = await refresh(trip.trip_id)
+      setTrace(confirmTrace(draft.draft_id, version.version))
+      setSelectedDraftId(null)
+      setNotice(
+        `已确认 ${draft.draft_id}，正式版本升级为 V${version.version}；其他候选自动失效，核验结果以 B 端返回为准。`,
+      )
+      if (refreshed) rememberTrip(refreshed)
+    } catch (caught) {
+      await handleError(caught, trip.trip_id)
+    } finally {
+      setBusy(false)
     }
-    if (events.some((event) => event.type === 'place_closure')) {
-      setNotice('闭馆已经上报过了（E002）。')
-      return
-    }
-    const revision = trip.event_revision + 1
-    const result = createClosureDraft(trip, revision)
-    setTrip({ ...trip, event_revision: revision })
-    setEvents((prev) => [...prev, result.event])
-    setDrafts((prev) => [
-      ...prev.map((draft) =>
-        draft.status === 'awaiting_confirmation'
-          ? { ...draft, status: 'superseded' as const, superseded_by: result.draft.draft_id }
-          : draft,
-      ),
-      result.draft,
-    ])
-    setNotice('已记录 E002（景区闭馆）；旧候选 D001 失效，生成 D002。')
-  }
-
-  const handleConfirm = (draftId: string, option: DraftOption) => {
-    if (!trip) return
-    const target = drafts.find((draft) => draft.draft_id === draftId)
-    if (!target || target.status !== 'awaiting_confirmation') return
-
-    const result = applyOption(trip, target, option)
-    setTrip(result.trip)
-    setVersions((prev) => [...prev, result.version])
-    setDrafts((prev) =>
-      prev.map((draft) => {
-        if (draft.draft_id === draftId) {
-          return { ...draft, status: 'confirmed' as const }
-        }
-        if (draft.status === 'awaiting_confirmation') {
-          return { ...draft, status: 'superseded' as const, superseded_by: draftId }
-        }
-        return draft
-      }),
-    )
-    setNotice(`已确认 ${draftId} / ${option.option_id}，正式版本更新为 V${result.trip.formal_version}。`)
   }
 
   const handleReset = () => {
     setTrip(null)
-    setEvents([])
     setDrafts([])
     setVersions([])
+    setTrace(null)
+    setSelectedDraftId(null)
     setNotice(null)
+    setError(null)
+    setErrorValidation(null)
     setFormError(null)
+    setSheet(null)
+    if (mode === 'real') syncUrl(null, mode)
   }
 
+  // 恢复：真实模式下按 ?trip= 重新拉取正式状态（刷新不丢）
+  useEffect(() => {
+    const tripId = readTripId()
+    if (!tripId) return
+    if (mode === 'mock') {
+      setNotice('本地模拟模式无法按链接恢复；请重新创建行程。')
+      return
+    }
+    let cancelled = false
+    setRestoring(true)
+    void (async () => {
+      try {
+        const [restoredTrip, restoredDrafts, restoredVersions] = await Promise.all([
+          api.getTrip(tripId),
+          api.getDrafts(tripId),
+          api.getVersions(tripId),
+        ])
+        if (cancelled) return
+        setTrip(restoredTrip)
+        setDrafts(restoredDrafts)
+        setVersions(restoredVersions.length > 0 ? restoredVersions : [restoredTrip.current_plan])
+        setTrace(restoreTrace(restoredTrip))
+        setNotice(`已恢复 ${tripId} · 正式版本 V${restoredTrip.current_version}`)
+      } catch (caught) {
+        if (cancelled) return
+        if (caught instanceof ApiError && caught.status === 404) {
+          syncUrl(null, mode)
+          setNotice('链接中的行程不存在，已回到创建页。')
+        } else {
+          setError(describeApiError(caught))
+          setErrorValidation(caught instanceof ApiError ? caught.validation ?? null : null)
+        }
+      } finally {
+        if (!cancelled) setRestoring(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+    // 仅首次挂载恢复
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // 创建/确认后回到顶部，避免移动端停在长页中部
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [trip?.trip_id, trip?.current_version])
+
+  const pendingDrafts = drafts.filter((draft) => draft.status === 'pending')
+  const selectedDraft =
+    drafts.find((draft) => draft.draft_id === selectedDraftId && draft.status === 'pending') ??
+    pendingDrafts[0] ??
+    null
+  const hasDock = pendingDrafts.length > 0
+
   return (
-    <div className="app">
-      <header className="topbar">
-        <div className="brand">
-          <p className="eyebrow">TravelGuard · 旅途智盾</p>
-          <h1>多事件约束感知与最小必要重规划</h1>
-        </div>
-        <div className="topbar-actions">
-          <span className="badge badge-source-simulation">本地模拟数据</span>
-          {trip && <span className="version-chip">正式版本 V{trip.formal_version}</span>}
-          {trip && (
-            <button type="button" className="ghost" onClick={handleReset}>
-              重新开始
-            </button>
-          )}
-        </div>
-      </header>
+    <div className={`app ${hasDock ? 'has-dock' : ''}`}>
+      <MissionBar
+        mode={mode}
+        trip={trip}
+        busy={busy}
+        hasTrace={trace !== null}
+        theme={theme}
+        hasDrafts={hasDock}
+        onToggleTheme={toggleTheme}
+        onOpenHistory={() => setSheet('history')}
+        onOpenSignal={() => setSheet('signal')}
+        onReset={handleReset}
+      />
 
       {notice && (
-        <p className="notice" role="status">
-          {notice}
-        </p>
-      )}
-
-      {!trip ? (
-        <CreateTripForm values={form} error={formError} onChange={handleChange} onSubmit={handleCreate} />
-      ) : (
-        <div className="layout">
-          <main className="main-column">
-            <section className="card summary">
-              <h2>
-                {trip.city} · {trip.dates[0]} 至 {trip.dates[1]}
-              </h2>
-              <dl className="kv">
-                <div>
-                  <dt>同行人数</dt>
-                  <dd>{trip.party_size} 人</dd>
-                </div>
-                <div>
-                  <dt>预算</dt>
-                  <dd>¥{trip.budget_cny}</dd>
-                </div>
-                <div>
-                  <dt>单段步行上限</dt>
-                  <dd>{trip.constraints.max_walking_minutes_per_leg} 分钟</dd>
-                </div>
-                <div>
-                  <dt>返程截止</dt>
-                  <dd>{trip.constraints.return_deadline.slice(11, 16)}</dd>
-                </div>
-                <div>
-                  <dt>事件修订</dt>
-                  <dd>#{trip.event_revision}</dd>
-                </div>
-              </dl>
-            </section>
-
-            <BudgetPanel trip={trip} />
-            <Timeline activities={trip.activities} />
-            <DraftPanel drafts={drafts} onConfirm={handleConfirm} />
-          </main>
-
-          <aside className="side-column">
-            <section className="card">
-              <h2>异常事件</h2>
-              <div className="event-actions">
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={handleDelay}
-                  disabled={events.some((event) => event.type === 'transport_delay')}
-                >
-                  上报交通延误 45 分钟
-                </button>
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={handleClosure}
-                  disabled={events.some((event) => event.type === 'place_closure')}
-                >
-                  上报景区闭馆
-                </button>
-              </div>
-
-              {events.length === 0 ? (
-                <p className="hint">按“延误 → 闭馆”的顺序上报，可以看到旧草案失效与双异常重规划。</p>
-              ) : (
-                <ul className="event-list">
-                  {events.map((event) => (
-                    <li key={event.event_id}>
-                      <div className="event-head">
-                        <strong>
-                          {event.event_id} · {eventLabels[event.type]}
-                        </strong>
-                        <SourceBadge value={event.source_type} />
-                      </div>
-                      <p className="meta">{event.detail}</p>
-                      <p className="meta">
-                        影响活动：{event.affects_activity_ids.join('、')} · 状态：{event.status}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-
-            <section className="card">
-              <h2>版本历史</h2>
-              <ul className="version-list">
-                {versions.map((item) => (
-                  <li key={item.formal_version}>
-                    <strong>V{item.formal_version}</strong>
-                    <span className="meta">{item.note}</span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-
-            <section className="card muted">
-              <h2>说明</h2>
-              <p>本 Demo 全部使用本地模拟数据，未连接 FastAPI 与 AgentArts。</p>
-              <p>
-                真实接口接入后，把 <code>services/demoApi.ts</code> 换成 API 调用即可，页面组件不用重写。
-              </p>
-            </section>
-          </aside>
+        <div className="notice-bar" role="status">
+          <strong>Notice</strong>
+          <span>{notice}</span>
+          <button type="button" className="dismiss" onClick={() => setNotice(null)} aria-label="关闭提示">
+            ×
+          </button>
         </div>
       )}
 
-      <footer className="footer">TravelGuard 前端 Demo · 模拟数据 · 2026</footer>
+      {error && (
+        <section className="error-panel" role="alert">
+          <h2>操作未完成</h2>
+          <p>{error}</p>
+          {errorValidation && <CheckList checks={errorValidation.checks} />}
+        </section>
+      )}
+
+      {restoring ? (
+        <div className="loading-screen" aria-live="polite">
+          <span className="badge badge-neutral">RESTORE · 读取正式状态</span>
+          <div className="skeleton wide" />
+          <div className="skeleton skeleton tall" />
+          <div className="skeleton wide" />
+          <p className="form-hint">正在从 B 端恢复 trip / drafts / versions…</p>
+        </div>
+      ) : !trip ? (
+        <SetupScreen
+          values={form}
+          error={formError}
+          busy={busy}
+          mode={mode}
+          onChange={handleChange}
+          onSubmit={handleCreate}
+        />
+      ) : (
+        <>
+          <BudgetRail trip={trip} />
+          <div className="console">
+            <RouteSpine
+              trip={trip}
+              candidatePlan={selectedDraft?.plan ?? null}
+              candidateLabel={selectedDraft?.draft_id ?? null}
+            />
+            <aside className="rail-col">
+              <AgentRail trace={trace} running={busy} />
+            </aside>
+          </div>
+          {hasDock && (
+            <DecisionDock
+              trip={trip}
+              drafts={drafts}
+              busy={busy}
+              selectedDraftId={selectedDraft?.draft_id ?? null}
+              onSelect={setSelectedDraftId}
+              onConfirm={handleConfirm}
+            />
+          )}
+        </>
+      )}
+
+      {sheet === 'signal' && trip && (
+        <SignalSheet
+          trip={trip}
+          busy={busy}
+          onClose={() => setSheet(null)}
+          onReportDelay={() => void reportEvent(buildDelayEvent, '列车晚点（东湖绿道段）', 'train_delay')}
+          onReportClosure={() => void reportEvent(buildClosureEvent, '景区闭馆（黄鹤楼）', 'poi_closed')}
+        />
+      )}
+      {sheet === 'history' && trip && (
+        <HistoryDrawer versions={versions} currentVersion={trip.current_version} onClose={() => setSheet(null)} />
+      )}
+
+      <footer className="footer">
+        <span>TravelGuard · Live Agent Console · {apiModeLabel(mode)}</span>
+        <span>模拟数据 · 核验与版本以 B 端返回为准 · AgentArts 未接入前为本地演示轨迹</span>
+      </footer>
     </div>
   )
 }
