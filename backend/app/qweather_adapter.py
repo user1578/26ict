@@ -4,16 +4,18 @@ from datetime import datetime, time, timedelta, timezone
 import math
 import os
 import re
+from urllib.parse import urlsplit
 
 from pydantic import ValidationError
 
+from .coordinates import mainland_gcj02
 from .external_schemas import ToolResult, WeatherData, WeatherRequest
 from .provider_http import ProviderFailure, ProviderHTTP, unknown, utc_now
 from .schemas import Status
 from .travel_schemas import require_timezone
 
 CHINA_TIME = timezone(timedelta(hours=8))
-HOST_PATTERN = re.compile(r"[a-z0-9-]+\.qweatherapi\.com", re.ASCII)
+HOST_PATTERN = re.compile(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+qweatherapi\.com", re.ASCII)
 # v1 codes are not contiguous. New codes remain UNKNOWN until explicitly supported.
 # https://dev.qweather.com/en/docs/api/weather/weather-conditions/
 KNOWN_CONDITION_CODES = frozenset(str(code) for code in (
@@ -51,9 +53,15 @@ class QWeatherAdapter:
             host = os.getenv("QWEATHER_API_HOST", "").strip().lower()
             if not key or not host:
                 raise ProviderFailure("missing_credentials", "尚未配置和风天气QWEATHER_API_KEY及QWEATHER_API_HOST")
+            if host.startswith("https://"):
+                parsed = urlsplit(host)
+                if parsed.path in ("", "/") and not parsed.query and not parsed.fragment and not parsed.username and not parsed.port:
+                    host = parsed.hostname or ""
+            host = host.rstrip("/")
             if not HOST_PATTERN.fullmatch(host):
                 raise ProviderFailure("invalid_configuration", "QWEATHER_API_HOST须为控制台提供的*.qweatherapi.com域名，不含协议或路径")
-            source_ref = f"https://{host}/weather/v1/daily/{body.location.latitude:.6f}/{body.location.longitude:.6f}"
+            location = mainland_gcj02(body.location) if body.coordinate_system == "WGS84" else body.location
+            source_ref = f"https://{host}/weather/v1/daily/{location.latitude:.2f}/{location.longitude:.2f}"
             result = self.http.get(source_ref, params={"days": 7, "localTime": "true", "lang": "zh"},
                                    headers={"X-QW-Api-Key": key})
             days = result["days"]

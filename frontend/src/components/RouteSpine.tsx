@@ -165,7 +165,7 @@ export function RouteSpine({ trip, candidatePlan, candidateLabel }: Props) {
         <div className="section-head-right">
           <div className="legend">
             <span className="legend-item">
-              <Badge tone="sim">模拟</Badge> 人工构造数据
+              <Badge tone={plan.activities.some(a=>a.poi_id.startsWith('amap:'))?'neutral':'sim'}>{plan.activities.some(a=>a.poi_id.startsWith('amap:'))?'地图地点':'模拟'}</Badge> 来源单独标注
             </span>
             <span className="legend-item">
               <Badge tone="unknown">未知</Badge> 不当作通过
@@ -231,7 +231,7 @@ export function RouteSpine({ trip, candidatePlan, candidateLabel }: Props) {
                           </span>
                           <Badge tone="warn">{item.event.active ? 'active' : '已解除'}</Badge>
                           <Badge tone={tone}>
-                            {item.event.verification_status === 'verified' ? '模拟已核实' : '未核实'}
+                            {item.event.verification_status === 'verified' ? item.event.source === 'simulation' ? '模拟已核实' : '有核实记录' : '未核实'}
                           </Badge>
                         </div>
                         <p className="signal-detail">
@@ -275,7 +275,7 @@ export function RouteSpine({ trip, candidatePlan, candidateLabel }: Props) {
       {plan.activities.length > 0 && (
         <p className="activity-note" style={{ marginTop: 'var(--s3)' }}>
           金额口径 {formatCny(trip.current_plan.budget.conservative_total_cny)}（已付 + 待付 − 已到账退款）；
-          规则票价来自 C 的模拟数据，未核实；evidence 为 simulated，不构成现实事实。
+          {plan.activities.some(a=>a.poi_id.startsWith('amap:'))?'路线与天气来源见推荐详情，费用为计划估算。':'当前规则与证据来自模拟测试，不构成现实事实。'}
         </p>
       )}
     </section>

@@ -10,7 +10,7 @@
 - 除健康检查和现有 OpenAPI 文档外，下列接口均要求 `X-Tool-Key` 请求头。服务端从 `TRAVELGUARD_TOOL_API_KEY` 读取共享密钥；未配置返回 503，缺失或不匹配返回 401。
 - A 在 AgentArts 的安全凭据配置中传递工具密钥；高德、和风的密钥只留在 B 端环境变量，绝不进入工具参数、响应、前端或源码。
 - C 的 React 使用同源 `/api/...` 调用，经**本机开发服务代理**在服务端注入 `X-Tool-Key`。C 负责配置代理，勿用 `VITE_` 环境变量把任何密钥打入浏览器包。当前 B 端没有生产用户登录、多租户隔离或公开跨域授权；共享工具密钥及 `confirmed_by` 不能证明真实用户身份。不可直接公开当前服务。
-- `.env.example` 只展示变量；服务不自动加载 `.env`。启动进程前设置变量。配置、数据库和密钥均不提交；不打印带高德 `key` 查询参数的完整请求 URL。
+- `.env.example` 只展示变量；服务启动时读取 `backend/.env`，进程环境优先。配置、数据库和密钥均不提交；不打印带高德 `key` 查询参数的完整请求 URL。
 
 ## 2. 标识、时间、费用与状态
 
@@ -31,7 +31,7 @@
 
 时间为带时区的 ISO 8601，例如 `2026-10-21T10:00:00+08:00`；拒绝无时区时间。服务生成时间使用 UTC（`Z`/`+00:00`）。旅行时间按实际时刻比较，不按字符串排序。地点规则必须覆盖**完整访问时段**；跨日/午休应拆成准确有效时段，不能把“白天开放”泛化为整日开放。
 
-天气 `on_date` 是 `YYYY-MM-DD`，当前仅按 `Asia/Shanghai` 日历查询今天起 7 日内预报。路线使用 GCJ-02，经纬度按**经度、纬度**传递；和风天气使用 WGS84。请求中的 `coordinate_system` 默认分别为 `GCJ-02` 和 `WGS84`，不能把高德坐标直接当 WGS84；当前 B 端不做坐标转换，调用方须提供对应坐标。路线字段为秒/米，输入既有行程时长仍为分钟，换算应使用 `ceil(seconds / 60)`，`null` 不能转为 0。
+天气 `on_date` 是 `YYYY-MM-DD`，当前仅按 `Asia/Shanghai` 日历查询今天起 7 日内预报。路线使用 GCJ-02，经纬度按**经度、纬度**传递；和风天气支持显式 `GCJ-02` 或兼容原有 `WGS84` 输入，默认仍为 `WGS84`。大陆 GCJ-02 直接传递；大陆 WGS84 会转换到 GCJ-02 用于天气网格查询，URL 按每日预报文档保留两位小数；其他地区保留 WGS84。路线字段为秒/米，输入既有行程时长仍为分钟，换算应使用 `ceil(seconds / 60)`，`null` 不能转为 0。
 
 所有 `*_cny` 为人民币元，输入推荐十进制字符串，最多两位小数；响应为 JSON 字符串，不能依赖 JavaScript 浮点累加。费用快照是**全量账本，不是增量**：只取当前正式版本计算，不累加历史版本。预算公式：`paid + planned - received`；`pending` 退款独立展示，绝不抵扣。
 
@@ -433,3 +433,29 @@ P6 与 `origin/cmx/frontend@1eaae97` 的只读核对结果如下（前端尚未�
 - 外部调用实现与离线 Mock 测试已具备；尚无真实密钥调用证据、AgentArts 云端导入联调、React 代理配置、真实权威地点规则库或生产认证。本阶段不部署、不执行付款/预约/改签/退款，也没有记录资金状态变化的真实交易入口。
 
 适配依据（核对日期 2026-10-21）：[高德POI](https://lbs.amap.com/api/webservice/guide/api-advanced/search)、[高德路径规划](https://lbs.amap.com/api/webservice/guide/api/direction)、[和风Daily Forecast v1](https://dev.qweather.com/en/docs/api/weather/weather-daily-forecast/)、[和风API配置及密钥头](https://dev.qweather.com/en/docs/configuration/api-config/)。接口实现有意限制范围，未承诺上述服务的全部能力。
+
+## 规则推荐（集成分支）
+
+新增两个只读 POST，均复用现有适配器且要求 `X-Tool-Key`：
+
+- `/api/recommendations`：初始路线候选，不创建正式旅行。
+- `/api/trips/{trip_id}/recommendations`：基于正式版本与所有 active 异常生成调整候选，校对城市、日期、预算、步行和返程约束，不允许借输入改写服务端硬约束。
+
+请求示例（日期必须按真实旅行输入；天气范围之外仍返回 UNKNOWN）：
+
+```json
+{"origin_city":"上海","city":"杭州","arrival_station":"杭州站","return_station":"杭州站",
+ "keywords":"公园","start_date":"2026-11-10","end_date":"2026-11-11","party_size":2,
+ "budget_cny":"1000.00","max_walking_minutes_per_leg":20,"arrival_time":"09:00","return_time":"17:00",
+ "stay_together":true,"other_costs_cny":"200.00"}
+```
+
+`other_costs_cny` 为地图/票价以外的整团费用估算，null 表示未知，不能自动当作0。市内游览从目的地抵达点及用户约定时间开始；不查询或虚构跨城车票与住宿订单。日期支持连续1至7日，每日默认两项90分钟游览、18:00前结束；缺少足够地点时明确标注日期覆盖不足。
+
+响应包括 `generator: rules-v1`、`agentarts_connected: false`、原始 `input`、真实搜索的 `places/searches`、抵达/返程点候选、`candidates` 及用于既有创建接口的 `trip_request` 公共字段。每个候选包含完整 `TravelPlan`、逐活动的地点/天气/规则、全部路段三种方式的结果、已知费用小计/费用完整性/预算余量、排序原因/取舍/待核实事项及核验结果。费用未知不置0，步行/交通总时长不完整时为 null。票价及交通费用按人数计算，其他费用输入按整团计算。
+
+排序先比较必要核验状态，再比较共同评分：步行分钟×0.7 + 交通分钟×0.2 + 已知人民币费用×0.03 + 每处户外天气风险30分。候选生成与交通方式选择分别偏向均衡、少步行及室内推断，有限方案排序不构成全局最优证明；室内分类推断不能当作核实的安全保证。
+
+推荐不修改数据库。前端仅在推荐必要核验 PASS 后调用既有创建/草案接口，再由 B 在正式确认事务内重新校验版本、异常、历史锁定、资金及预约事实。用户上报默认未核实，不能确认；不得由推荐模块虚构核实记录。旧费用只允许替换标记为 `rules-v1:aggregate-estimate` 的本引擎 planned 聚合估算，其余原流水/退款/证据保留；覆盖关系无法对账时 UNKNOWN 阻止确认。标记不表示实际支付。
+
+地图使用高德 GCJ-02；和风支持控制台合法多级 `*.qweatherapi.com` 专属域名，也接受无路径/用户信息/端口的 HTTPS 根地址。主机格式和坐标处理参考 [和风 API Host](https://dev.qweather.com/docs/configuration/api-host/)、[每日预报](https://dev.qweather.com/docs/api/weather/weather-daily-forecast/)、[坐标约定](https://dev.qweather.com/docs/resource/glossary/)。7日预报范围不因供应商扩展而自动放宽。

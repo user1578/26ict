@@ -1,186 +1,166 @@
-// 端到端冒烟：本机 Edge（Chromium 内核）跑真实页面，验证
-// 「创建 V1 → 上报晚点 → 决策坞 → 确认 V2 → 上报闭馆 → 确认 V3 → 版本档案 → 双主题 → 移动端 → mock」。
-// 前置：B 后端 127.0.0.1:8000；Vite dev 127.0.0.1:5173（代理注入 X-Tool-Key）。
-// 用法：node scripts/e2e-demo.mjs
+// Real browser + real B HTTP. Provider facts for lifecycle tests are explicitly simulated.
+// Live provider evidence is tested separately against the normal local service.
+import assert from 'node:assert/strict'
 import { mkdirSync } from 'node:fs'
+import { spawn } from 'node:child_process'
+import { createServer } from 'node:net'
+import { randomBytes } from 'node:crypto'
+import { resolve, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright-core'
 
-const BASE = process.env.E2E_URL ?? 'http://127.0.0.1:5173/'
-const EDGE =
-  process.env.EDGE_PATH ??
-  'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
-const SHOTS = process.env.E2E_SHOTS ?? 'D:\\project\\audit\\screens-redesign'
-mkdirSync(SHOTS, { recursive: true })
-
-const steps = []
-const pageErrors = []
-let dockSeen = false
-
-function shot(page, name, fullPage = false) {
-  return page.screenshot({ path: `${SHOTS}\\${name}.png`, fullPage })
-}
-
-async function waitVersion(page, version, timeout = 20000) {
-  await page.waitForFunction(
-    (value) => {
-      const meta = document.querySelector('.mission-meta')
-      if (!meta || !meta.textContent) return false
-      return meta.textContent.replace(/\s+/g, '').includes(`V${value}`)
-    },
-    version,
-    { timeout },
-  )
-}
-
-async function openSignal(page) {
-  await page.getByTestId('open-signal').click()
-  await page.getByTestId('signal-sheet').waitFor()
-  await page.waitForTimeout(360)
-}
-
-const browser = await chromium.launch({ executablePath: EDGE, headless: true })
-const context = await browser.newContext({
-  locale: 'zh-CN',
-  timezoneId: 'Asia/Shanghai',
-  viewport: { width: 1440, height: 960 },
+const frontend=resolve(dirname(fileURLToPath(import.meta.url)),'..')
+const root=resolve(frontend,'..')
+const shots=resolve(process.env.E2E_SHOTS ?? resolve(root,'.cache/integration/screenshots'))
+const python=process.env.E2E_PYTHON ?? resolve(root,'backend/.venv/Scripts/python.exe')
+const edge=process.env.EDGE_PATH ?? 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
+const liveBase=process.env.E2E_URL ?? 'http://127.0.0.1:5174/'
+mkdirSync(shots,{recursive:true})
+const children=[]
+const logs=[]
+const errors=[]
+const steps=[]
+let browser
+const freePort=()=>new Promise((resolvePort,reject)=>{
+  const s=createServer();s.on('error',reject);s.listen(0,'127.0.0.1',()=>{const {port}=s.address();s.close(()=>resolvePort(port))})
 })
-const page = await context.newPage()
-page.on('pageerror', (error) => pageErrors.push(String(error)))
-page.on('console', (message) => {
-  if (message.type() === 'error') pageErrors.push(`console: ${message.text()}`)
-})
-
-try {
-  // ---------- 真实后端：主流程 ----------
-  await page.goto(BASE, { waitUntil: 'networkidle' })
-  await page.getByTestId('create-trip').waitFor()
-  await shot(page, '01-setup-dark')
-  steps.push('setup (dark)')
-
-  await page.getByTestId('create-trip').click()
-  await page.getByTestId('budget-rail').waitFor({ timeout: 20000 })
-  await waitVersion(page, 1)
-  await page.getByTestId('agent-rail').waitFor()
-  await shot(page, '02-console-v1-dark')
-  steps.push('V1 console (dark)')
-
-  await openSignal(page)
-  await shot(page, '03-signal-sheet-dark')
-  await page.getByTestId('signal-delay').click()
-  await page.getByTestId('decision-dock').waitFor({ timeout: 20000 })
-  await page.getByTestId('draft-card').first().waitFor()
-  await page.waitForTimeout(520)
-  await shot(page, '04-decision-delay-dark')
-  steps.push('delay candidates (decision dock)')
-  dockSeen = true
-
-  await page.getByTestId('confirm-draft').first().click()
-  await waitVersion(page, 2)
-  await shot(page, '05-console-v2-dark')
-  steps.push('V2 confirmed')
-
-  await openSignal(page)
-  await page.getByTestId('signal-closure').click()
-  await page.waitForFunction(
-    () => document.querySelectorAll('[data-testid="draft-card"]').length >= 3,
-    undefined,
-    { timeout: 20000 },
-  )
-  await page.waitForFunction(
-    () =>
-      [...document.querySelectorAll('[data-testid="draft-card"]')].filter((card) =>
-        card.textContent?.includes('待确认'),
-      ).length >= 2,
-    undefined,
-    { timeout: 20000 },
-  )
-  const cardCount = await page.getByTestId('draft-card').count()
-  await page.waitForTimeout(520)
-  await shot(page, '06-decision-closure-dark')
-  steps.push(`closure candidates (${cardCount} cards)`)
-
-  await page.getByTestId('confirm-draft').first().click()
-  await waitVersion(page, 3)
-
-  await page.getByTestId('open-history').click()
-  await page.getByTestId('history-drawer').waitFor()
-  await shot(page, '07-history-dark')
-  steps.push('history drawer')
-  await page.keyboard.press('Escape')
-  await page.getByTestId('history-drawer').waitFor({ state: 'detached' })
-
-  await page.getByTestId('theme-toggle').click()
-  await page.waitForTimeout(900)
-  const theme = await page.evaluate(() => document.documentElement.dataset.theme)
-  await shot(page, '08-console-v3-light')
-  const body = await page.locator('body').innerText()
-  const checks = {
-    hasV3: body.includes('V3'),
-    hasSimulationLabel: body.includes('模拟'),
-    hasAgentTrace: body.includes('智能体工作台'),
-    hasDecisionDock: dockSeen || body.includes('决策坞'),
-    lightTheme: theme === 'light',
+const launch=(exe,args,env)=>{
+  const child=spawn(exe,args,{cwd:frontend,env:{...process.env,...env},windowsHide:true,stdio:['ignore','pipe','pipe']})
+  children.push(child)
+  child.stdout.on('data',x=>logs.push(String(x)))
+  child.stderr.on('data',x=>logs.push(String(x)))
+  return child
+}
+async function ready(url,child){
+  const deadline=Date.now()+20000
+  while(Date.now()<deadline){
+    if(child.exitCode!==null) throw new Error(`Service startup failed: ${logs.join('').slice(-1500)}`)
+    try { const r=await fetch(url);if(r.ok)return } catch { /* bounded startup probe */ }
+    await new Promise(r=>setTimeout(r,100))
   }
-  await page.getByRole('button', { name: '重新开始' }).click()
-  await page.getByTestId('create-trip').waitFor()
-  await shot(page, '08b-setup-light')
-  steps.push(`light theme (${theme})`)
+  throw new Error(`Service readiness timeout: ${url}`)
+}
+const shot=(page,name)=>page.screenshot({path:resolve(shots,`${name}.png`),fullPage:false})
+async function version(page,n){await page.waitForFunction(v=>document.querySelector('.mission-meta')?.textContent?.replace(/\s/g,'').includes(`V${v}`),n)}
+async function fill(page,city='杭州'){
+  await page.getByTestId('field-city').fill(city)
+  await page.getByTestId('field-origin').fill('上海')
+  const dates=page.locator('input[type="date"]')
+  await dates.nth(0).fill('2026-11-10');await dates.nth(1).fill('2026-11-11')
+  await page.getByText('其他费用估算', {exact:false}).locator('..').locator('input').fill('200')
+  await page.getByText('同行人数', {exact:false}).locator('..').locator('input').fill('2')
+}
+async function verifyFixtureEvent(page){
+  const tripId=new URL(page.url()).searchParams.get('trip')
+  const trip=await (await page.request.get(`/api/trips/${tripId}`)).json()
+  const event=trip.events.at(-1)
+  const {event_id,revision:_revision,...facts}=event
+  const response=await page.request.put(`/api/trips/${tripId}/events/${event_id}`,{data:{...facts,
+    request_id:`e2e-verify-${randomBytes(4).toString('hex')}`,expected_event_revision:trip.event_revision,
+    source:'simulation',evidence_ref:'simulation:e2e-controlled-verification',verification_status:'verified'}})
+  assert.equal(response.status(),200)
+  await page.reload({waitUntil:'networkidle'})
+  await page.getByTestId('refresh-recommendations').click()
+  await page.getByTestId('decision-dock').waitFor()
+  await page.getByTestId('confirm-draft').filter({visible:true}).first().waitFor()
+}
+try {
+  const apiPort=await freePort(), uiPort=await freePort(), key=`e2e-${randomBytes(16).toString('hex')}`
+  const env={TRAVELGUARD_TOOL_API_KEY:key,TRAVELGUARD_TOOL_KEY:key,
+    TRAVELGUARD_DB_PATH:resolve(root,`backend/.pytest_cache/e2e-${process.pid}.local.sqlite3`),
+    E2E_BACKEND_PORT:String(apiPort),TRAVELGUARD_API_BASE:`http://127.0.0.1:${apiPort}`}
+  const backend=launch(python,[resolve(root,'backend/tests/e2e_server.py')],env)
+  await ready(`http://127.0.0.1:${apiPort}/health`,backend)
+  const vite=launch(process.execPath,[resolve(frontend,'node_modules/vite/bin/vite.js'),'--host','127.0.0.1','--port',String(uiPort),'--strictPort'],env)
+  const base=`http://127.0.0.1:${uiPort}/`
+  await ready(base,vite)
+  browser=await chromium.launch({executablePath:edge,headless:true})
+  const context=await browser.newContext({baseURL:base,locale:'zh-CN',timezoneId:'Asia/Shanghai',viewport:{width:1440,height:960}})
+  const page=await context.newPage();page.setDefaultTimeout(20000)
+  page.on('pageerror',e=>errors.push(String(e)))
+  await page.goto(base,{waitUntil:'networkidle'})
+  await fill(page)
+  await shot(page,'01-setup-dark')
+  assert.equal(await page.locator('.mode-link').count(),0)
+  assert.equal(await page.getByText('生成 V1 并启动智能体',{exact:true}).count(),0)
+  await page.getByTestId('create-trip').click()
+  await page.getByTestId('recommendation-card').first().waitFor()
+  assert.equal(await page.getByTestId('recommendation-card').count(),3)
+  assert.match(await page.getByTestId('recommendations').innerText(),/模拟数据/)
+  await page.getByTestId('recommendations').scrollIntoViewIfNeeded()
+  await shot(page,'02-controlled-recommendations')
+  assert.equal(await page.getByTestId('save-recommendation').isEnabled(),true)
+  await page.getByTestId('save-recommendation').click();await version(page,1)
+  steps.push('real B HTTP with simulated evidence: 3 alternatives -> select -> V1')
+  const savedContext=await page.evaluate(()=>{const key=`travelguard:planning:${new URL(location.href).searchParams.get('trip')}`; const value=localStorage.getItem(key);localStorage.removeItem(key);return {key,value}})
+  await page.reload({waitUntil:'networkidle'});await version(page,1)
+  await page.getByTestId('open-signal').click();await page.getByTestId('signal-delay').click()
+  await page.getByRole('alert').filter({hasText:'缺少此旅行的规划上下文'}).waitFor()
+  const unchanged=await (await page.request.get(`/api/trips/${new URL(page.url()).searchParams.get('trip')}`)).json()
+  assert.equal(unchanged.event_revision,0)
+  await page.evaluate(({key,value})=>localStorage.setItem(key,value),savedContext)
+  await page.reload({waitUntil:'networkidle'});await version(page,1)
+  steps.push('missing browser context blocks real-mode writes without simulation fallback')
 
-  // ---------- 移动端 ----------
-  const mobile = await browser.newContext({
-    locale: 'zh-CN',
-    timezoneId: 'Asia/Shanghai',
-    viewport: { width: 390, height: 844 },
-    isMobile: true,
-    hasTouch: true,
-  })
-  const mobilePage = await mobile.newPage()
-  mobilePage.on('pageerror', (error) => pageErrors.push(`mobile: ${String(error)}`))
-  await mobilePage.goto(BASE, { waitUntil: 'networkidle' })
-  await mobilePage.getByTestId('create-trip').waitFor()
-  await shot(mobilePage, '09-mobile-setup')
-  await mobilePage.getByTestId('create-trip').click()
-  await mobilePage.getByTestId('budget-rail').waitFor({ timeout: 20000 })
-  await mobilePage.getByTestId('open-signal').click()
-  await mobilePage.getByTestId('signal-delay').click()
-  await mobilePage.getByTestId('decision-dock').waitFor({ timeout: 20000 })
-  await mobilePage.waitForTimeout(520)
-  await shot(mobilePage, '10-mobile-decision')
-  steps.push('mobile setup + decision')
-  await mobile.close()
-
-  // ---------- mock 模式 ----------
-  const mock = await browser.newContext({
-    locale: 'zh-CN',
-    timezoneId: 'Asia/Shanghai',
-    viewport: { width: 1440, height: 960 },
-  })
-  const mockPage = await mock.newPage()
-  mockPage.on('pageerror', (error) => pageErrors.push(`mock: ${String(error)}`))
-  await mockPage.goto(`${BASE}?mode=mock`, { waitUntil: 'networkidle' })
-  await mockPage.getByTestId('create-trip').click()
-  await mockPage.getByTestId('budget-rail').waitFor({ timeout: 15000 })
-  await mockPage.getByTestId('open-signal').click()
-  await mockPage.getByTestId('signal-delay').click()
-  await mockPage.getByTestId('decision-dock').waitFor({ timeout: 15000 })
-  await mockPage.getByTestId('confirm-draft').first().click()
-  await waitVersion(mockPage, 2)
-  await mockPage.waitForTimeout(400)
-  await shot(mockPage, '11-mock-v2')
-  checks.mockV2 = (await mockPage.locator('.mission-meta').innerText()).replace(/\s+/g, '').includes('V2')
-  steps.push('mock mode V2')
-  await mock.close()
-
-  console.log(JSON.stringify({ ok: true, steps, checks, pageErrors }, null, 2))
-  if (pageErrors.length > 0) process.exitCode = 1
-} catch (error) {
-  await shot(page, '99-failure').catch(() => undefined)
-  const text = await page.locator('body').innerText().catch(() => '')
-  console.error('E2E FAILED:', error)
-  console.error('--- page text tail ---')
-  console.error(text.slice(-3000))
-  console.log(JSON.stringify({ ok: false, steps, pageErrors }, null, 2))
-  process.exitCode = 1
+  await page.getByTestId('open-signal').click();await page.getByTestId('signal-delay').click()
+  await page.getByRole('status').filter({hasText:'未核实异常会阻止确认'}).waitFor()
+  assert.equal(await page.getByTestId('confirm-draft').count(),0)
+  steps.push('unverified user event blocks confirmation')
+  await verifyFixtureEvent(page)
+  await shot(page,'03-controlled-delay-drafts')
+  await page.getByTestId('confirm-draft').first().click();await version(page,2)
+  await page.reload({waitUntil:'networkidle'});await version(page,2)
+  steps.push('controlled event verification -> candidates -> confirm V2 -> refresh restores')
+  await page.getByTestId('open-signal').click();await page.getByTestId('signal-closure').click()
+  await page.getByRole('status').filter({hasText:'未核实异常会阻止确认'}).waitFor()
+  await verifyFixtureEvent(page)
+  await page.getByTestId('confirm-draft').first().click();await version(page,3)
+  await page.getByTestId('open-history').click();await page.getByTestId('history-drawer').waitFor()
+  await shot(page,'04-controlled-version-history')
+  await page.keyboard.press('Escape')
+  await page.getByTestId('theme-toggle').click()
+  assert.equal(await page.locator('html').getAttribute('data-theme'),'light')
+  await shot(page,'05-console-light')
+  await page.setViewportSize({width:390,height:844})
+  await page.getByTestId('recommendations').scrollIntoViewIfNeeded()
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true)
+  await shot(page,'06-mobile')
+  steps.push('closure replacement/drop -> confirm V3 -> version history -> light/mobile layout')
+  // Existing offline simulation remains available to automated tests with clear labels.
+  const mock=await context.newPage();await mock.goto(`${base}?mode=mock`)
+  await mock.getByTestId('create-trip').click();await version(mock,1)
+  await mock.getByTestId('open-signal').click();await mock.getByTestId('signal-delay').click()
+  await mock.getByTestId('decision-dock').waitFor();await mock.getByTestId('confirm-draft').first().click();await version(mock,2)
+  steps.push('explicit mock mode regression (not a live service substitute)')
+  // Actual providers: use the normal local service, not the fixture server.
+  if(process.env.E2E_SKIP_LIVE!=='1'){
+    const live=await browser.newContext({baseURL:liveBase,locale:'zh-CN',timezoneId:'Asia/Shanghai',viewport:{width:1440,height:960}})
+    const livePage=await live.newPage();livePage.setDefaultTimeout(180000)
+    livePage.on('pageerror',e=>errors.push(`live: ${e}`))
+    await livePage.goto(liveBase,{waitUntil:'networkidle'})
+    await fill(livePage)
+    await livePage.getByTestId('create-trip').click()
+    await livePage.getByTestId('recommendation-card').first().waitFor()
+    assert.equal(await livePage.getByTestId('recommendation-card').count(),3)
+    assert.match(await livePage.getByTestId('recommendations').innerText(),/真实来源/)
+    assert.equal(await livePage.getByTestId('save-recommendation').isDisabled(),true)
+    await livePage.getByTestId('recommendations').evaluate(el=>el.scrollIntoView({block:'start'}))
+    await shot(livePage,'07-live-hangzhou-map-weather')
+    const firstText=await livePage.getByTestId('recommendation-itinerary').innerText()
+    assert.match(firstText,/杭州|西湖|浙江/)
+    await livePage.getByTestId('field-city').fill('南京')
+    await livePage.getByTestId('create-trip').click()
+    await livePage.getByRole('button',{name:'生成路线推荐',exact:true}).waitFor()
+    await livePage.waitForFunction(()=>document.querySelector('[data-testid="recommendations"]')?.textContent?.includes('上海 → 南京'))
+    assert.match(await livePage.getByTestId('recommendation-itinerary').innerText(),/南京|江苏|中山/)
+    await livePage.getByTestId('recommendations').evaluate(el=>el.scrollIntoView({block:'start'}))
+    await shot(livePage,'08-live-nanjing-map-weather')
+    steps.push('live providers: Hangzhou + Nanjing change actual POIs/routes/weather; incomplete rules block V1')
+    await live.close()
+  }
+  assert.deepEqual(errors,[])
+  console.log(JSON.stringify({status:'PASS',steps,pageErrors:errors,screenshots:shots},null,2))
 } finally {
-  await browser.close()
+  if(browser) await browser.close()
+  for(const child of children.reverse()) if(child.exitCode===null) child.kill()
 }

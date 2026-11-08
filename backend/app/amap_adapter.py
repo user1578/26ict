@@ -63,7 +63,9 @@ class AmapAdapter:
                     lon, lat = position.split(",")
                     location = Coordinates(longitude=lon, latitude=lat)
                 places.append(Place(poi_id="amap:" + row["id"], name=row["name"],
-                                    address=optional_text(row.get("address")), location=location))
+                                    address=optional_text(row.get("address")), location=location,
+                                    category=optional_text(row.get("type")),
+                                    indoor=True if "博物馆" in str(row.get("type", "")) else None))
             return ToolResult(status="PASS", code="ok", message="候选地点仅供选择；开放、票价和预约需另查规则",
                               evidence=self.http.evidence("amap", BASE + path), data=places[:body.limit])
         except ProviderFailure as failure:

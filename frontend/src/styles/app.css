@@ -1936,3 +1936,12 @@
     white-space: normal;
   }
 }
+
+/* Route recommendations reuse C console cards, tokens and typography. */
+.recommendation-panel { scroll-margin-top: 100px; margin: var(--s5) auto; max-width: 1440px; }
+.recommendation-choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s3); margin: var(--s4) 0; }
+.recommendation-choices .draft-card { text-align: left; min-width: 0; color: inherit; cursor: pointer; font: inherit; }
+.recommendation-panel details { margin: var(--s3) 0; overflow-wrap: anywhere; }
+.recommendation-panel .day-list { list-style: none; padding: 0; }
+.recommendation-panel .activity-note { display: block; }
+@media (max-width: 760px) { .recommendation-choices { grid-template-columns: 1fr; } }

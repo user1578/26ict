@@ -29,7 +29,7 @@ export function MissionBar({
   onOpenSignal,
   onReset,
 }: Props) {
-  const statusLabel = busy ? 'Agent 运行中' : hasTrace ? 'Agent 已回执' : 'Agent 待命'
+  const statusLabel = busy ? '正在处理' : hasTrace ? '已有处理记录' : '规则规划就绪'
   const statusTone = busy ? 'busy' : hasTrace ? 'live' : ''
 
   return (
@@ -124,11 +124,7 @@ export function MissionBar({
             <Icon name="refresh" />
           </button>
         )}
-        {!trip && (
-          <a className="mode-link hide-sm" href={mode === 'mock' ? '?mode=real' : '?mode=mock'}>
-            {mode === 'mock' ? '切到真实后端' : '切到本地模拟'}
-          </a>
-        )}
+
         {trip && hasDrafts && <span className="visually-hidden">存在待决候选</span>}
       </div>
     </header>

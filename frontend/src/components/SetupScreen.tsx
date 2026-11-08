@@ -5,6 +5,12 @@ import { Icon } from './ui.tsx'
 
 export interface TripFormValues {
   city: string
+  originCity: string
+  arrivalStation: string
+  returnStation: string
+  arrivalTime: string
+  keywords: string
+  otherCosts: string
   startDate: string
   endDate: string
   partySize: string
@@ -24,26 +30,9 @@ interface Props {
 }
 
 const RUNBOOK = [
-  {
-    title: '读取规则与证据',
-    detail: 'B 工具 get_place_rules / GET trip state；未知一律 UNKNOWN',
-    tag: 'B 工具',
-  },
-  {
-    title: '核算路线与天气',
-    detail: 'get_route_options / get_weather_risk；缺数据不补造',
-    tag: 'B 工具',
-  },
-  {
-    title: '校验预算与硬约束',
-    detail: 'calculate_budget / validate_plan；模型不参与判定',
-    tag: '确定性',
-  },
-  {
-    title: '生成正式版本 V1',
-    detail: 'AgentArts WF_Plan → C 提交；当前演示由前端模拟规划',
-    tag: 'AgentArts',
-  },
+  { title: '选目的地与日期', detail: '从抵达点安排真实地点与出行路线', tag: '任务简报' },
+  { title: '对比三条路线', detail: '比较步行、费用与天气风险，未知保留提示', tag: '规则推荐' },
+  { title: '核对后再确认', detail: '开放、预约与交通证据不足时仅保留候选', tag: '用户确认' },
 ]
 
 export function SetupScreen({ values, error, busy, mode, onChange, onSubmit }: Props) {
@@ -58,12 +47,12 @@ export function SetupScreen({ values, error, busy, mode, onChange, onSubmit }: P
         </h1>
         <p className="hero-lede">
           多事件连锁影响、最小必要重规划、约束与证据核验。先给系统一份任务简报，它会算清预算与硬约束，
-          再由 AgentArts 生成正式行程 V1——每一个数字都有来源，未知不会被伪装成通过。
+          根据地图与天气生成路线候选，核对通过后由你确认保存。
         </p>
         <div className="hero-meta">
-          <span>武汉两日 · 示例数据</span>
+          <span>多目的地 · 多日路线</span>
           <span>{apiModeLabel(mode)}</span>
-          <span>AgentArts 未接入前为本地演示</span>
+          <span>独立规则推荐 · AgentArts 待接入</span>
         </div>
 
         <ol className="runbook">
@@ -79,10 +68,7 @@ export function SetupScreen({ values, error, busy, mode, onChange, onSubmit }: P
           ))}
         </ol>
 
-        <p className="hero-note">
-          静态核验由 B 端程序完成；大模型只负责意图与候选生成。页面中的「模拟」标签表示该事实来自人工构造的
-          演示数据，不构成现实开放、预约或付款凭证。
-        </p>
+        <p className="hero-note">地图和天气有来源与查询时间；开放、预约和费用未知时不会当作已核实。模拟测试始终标注来源。</p>
       </section>
 
       <form
@@ -94,13 +80,14 @@ export function SetupScreen({ values, error, busy, mode, onChange, onSubmit }: P
       >
         <div className="brief-head">
           <h2 className="brief-title">任务简报</h2>
-          <span className="badge badge-sim">模拟数据</span>
+          <span className={`badge badge-${mode === 'mock' ? 'sim' : 'neutral'}`}>{mode === 'mock' ? '模拟测试' : '地图与天气'}</span>
         </div>
 
         <div className="form-grid">
+          <label className="field"><span className="field-label">出发地城市</span><input value={values.originCity} onChange={event=>onChange({originCity:event.target.value})} data-testid="field-origin"/></label>
           <label className="field field-wide">
             <span className="field-label">
-              城市 <em>出发地与目的地</em>
+              目的地城市 <em>实际游览城市</em>
             </span>
             <input
               value={values.city}
@@ -109,9 +96,14 @@ export function SetupScreen({ values, error, busy, mode, onChange, onSubmit }: P
               data-testid="field-city"
             />
           </label>
+          <label className="field"><span className="field-label">目的地抵达点 <em>车站或住处</em></span><input value={values.arrivalStation} onChange={event=>onChange({arrivalStation:event.target.value})} data-testid="field-arrival-station"/></label>
+          <label className="field"><span className="field-label">返程车站 <em>目的地内</em></span><input value={values.returnStation} onChange={event=>onChange({returnStation:event.target.value})} data-testid="field-return-station"/></label>
+          <label className="field"><span className="field-label">抵达后出发游览时间</span><input type="time" value={values.arrivalTime} onChange={event=>onChange({arrivalTime:event.target.value})}/></label>
+          <label className="field"><span className="field-label">景点搜索与偏好</span><input value={values.keywords} onChange={event=>onChange({keywords:event.target.value})} data-testid="field-keywords"/></label>
+          <label className="field field-wide"><span className="field-label">其他费用估算（整团元）<em>长途、食宿等；留空表示未知</em></span><input type="number" min="0" step="0.01" value={values.otherCosts} onChange={event=>onChange({otherCosts:event.target.value})}/></label>
           <label className="field">
             <span className="field-label">
-              出发日期 <em>YYYY-MM-DD</em>
+              开始游览日期 <em>最多7日</em>
             </span>
             <input
               type="date"
@@ -155,7 +147,7 @@ export function SetupScreen({ values, error, busy, mode, onChange, onSubmit }: P
           </label>
           <label className="field">
             <span className="field-label">
-              单段步行上限 <em>分钟</em>
+              每次最多愿意走多久 <em>分钟</em>
             </span>
             <input
               type="number"
@@ -167,7 +159,7 @@ export function SetupScreen({ values, error, busy, mode, onChange, onSubmit }: P
           </label>
           <label className="field">
             <span className="field-label">
-              返程截止 <em>返回日当天</em>
+              到达返程车站的截止时间 <em>返回日当天</em>
             </span>
             <input
               type="time"
@@ -181,7 +173,7 @@ export function SetupScreen({ values, error, busy, mode, onChange, onSubmit }: P
               checked={values.stayTogether}
               onChange={(event) => onChange({ stayTogether: event.target.checked })}
             />
-            希望全程同行（仅偏好；B 端暂无多人同行校验）
+            希望全程同行（偏好）
           </label>
         </div>
 
@@ -189,18 +181,13 @@ export function SetupScreen({ values, error, busy, mode, onChange, onSubmit }: P
 
         <div className="form-actions">
           <button type="submit" className="btn btn-primary" disabled={busy} data-testid="create-trip">
-            {busy ? '正在生成 V1…' : '生成 V1 并启动智能体'}
+            {busy ? '正在查询地图与天气…' : mode === 'mock' ? '生成模拟测试 V1' : '生成路线推荐'}
             <Icon name="arrow" size={15} />
           </button>
           {busy && <span className="spinner" aria-hidden="true" />}
         </div>
 
-        <p className="mode-note">
-          {mode === 'mock' ? '本地模拟模式：不访问后端，核验由前端按 B 规则近似。' : '真实后端模式：通过 Vite 代理调用 B 端 FastAPI，密钥不进入浏览器。'}
-          <a className="mode-link" href={mode === 'mock' ? '?mode=real' : '?mode=mock'}>
-            {mode === 'mock' ? '切到真实后端' : '切到本地模拟'}
-          </a>
-        </p>
+        {mode === 'mock' && <p className="mode-note">模拟测试数据，不代表真实开放、预约或付款。</p>}
       </form>
     </div>
   )

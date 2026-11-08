@@ -244,7 +244,7 @@ def test_weather_mock_uses_v1_host_auth_units_and_attribution(provider, monkeypa
     assert result["evidence"]["source_updated_at"] is None
     assert result["evidence"]["attributions"]
     request = provider["requests"][0]
-    assert request.url.path == "/weather/v1/daily/30.500000/114.300000"
+    assert request.url.path == "/weather/v1/daily/30.50/114.31"
     assert request.headers["X-QW-Api-Key"] == "fake-weather-key"
     assert request.url.params["localTime"] == "true"
     assert "fake-weather-key" not in response.text
@@ -416,7 +416,7 @@ def test_partially_overlapping_closure_rule_blocks_open_rule(tmp_path, monkeypat
     ("get-route-options", {**ROUTE, "modes": ["walking", "walking"]}),
     ("get-route-options", {**ROUTE, "coordinate_system": "WGS84"}),
     ("get-weather-risk", {**WEATHER, "on_date": "invalid"}),
-    ("get-weather-risk", {**WEATHER, "coordinate_system": "GCJ-02"}),
+    ("get-weather-risk", {**WEATHER, "coordinate_system": "unknown"}),
     ("get-weather-risk", {**WEATHER, "timezone": "UTC"}),
     ("get-place-rules", {**RULES, "visit_start_at": "2026-10-21T10:00:00"}),
     ("get-place-rules", {**RULES, "visit_end_at": RULES["visit_start_at"]}),
@@ -433,3 +433,25 @@ def test_openapi_tool_names_and_existing_contracts_remain_available():
     assert "/api/tools/calculate-budget" in paths
     assert "/api/tools/validate-plan" in paths
     assert "/api/trips/{trip_id}/drafts/{draft_id}/confirm" in paths
+
+
+@pytest.mark.parametrize('host', ['project.region.qweatherapi.com', 'https://project.region.qweatherapi.com/'])
+def test_weather_accepts_official_multilabel_host_and_gcj02(provider, monkeypatch, host):
+    enable_provider(monkeypatch)
+    monkeypatch.setenv('QWEATHER_API_HOST', host)
+    provider['handler'] = lambda _: httpx.Response(200,json=weather_payload())
+    response=call('get-weather-risk',{**WEATHER,'coordinate_system':'GCJ-02'})
+    assert response.status_code==200
+    assert response.json()['status']=='PASS'
+    assert provider['requests'][0].url.host=='project.region.qweatherapi.com'
+    assert provider['requests'][0].url.path=='/weather/v1/daily/30.50/114.30'
+
+
+@pytest.mark.parametrize('host', ['https://test.qweatherapi.com:443','https://user@test.qweatherapi.com',
+    'test.qweatherapi.com.evil.example','https://test.qweatherapi.com/private','-bad.qweatherapi.com'])
+def test_weather_rejects_unsafe_hosts_without_network(provider, monkeypatch,host):
+    enable_provider(monkeypatch)
+    monkeypatch.setenv('QWEATHER_API_HOST',host)
+    response=call('get-weather-risk',WEATHER)
+    assert response.json()['code']=='invalid_configuration'
+    assert provider['requests']==[]

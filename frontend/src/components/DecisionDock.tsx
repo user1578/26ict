@@ -1,3 +1,4 @@
+import type { Recommendation } from '../services/recommendations.ts'
 import type { DraftView, TripView } from '../types.ts'
 import { poiName } from '../services/dataset.ts'
 import { formatCny } from '../services/money.ts'
@@ -8,6 +9,8 @@ import { Badge, DraftStateBadge, Icon } from './ui.tsx'
 
 interface Props {
   trip: TripView
+  recommendationChecks?: Recommendation[]
+  requireRecommendation?: boolean
   drafts: DraftView[]
   busy: boolean
   selectedDraftId: string | null
@@ -17,7 +20,7 @@ interface Props {
 
 const statusOrder: Record<DraftView['status'], number> = { pending: 0, committed: 1, stale: 2 }
 
-export function DecisionDock({ trip, drafts, busy, selectedDraftId, onSelect, onConfirm }: Props) {
+export function DecisionDock({ trip, drafts, busy, selectedDraftId, onSelect, onConfirm, recommendationChecks = [], requireRecommendation = false }: Props) {
   const sorted = [...drafts].sort((left, right) => statusOrder[left.status] - statusOrder[right.status])
   const pendingCount = drafts.filter((draft) => draft.status === 'pending').length
 
@@ -45,14 +48,15 @@ export function DecisionDock({ trip, drafts, busy, selectedDraftId, onSelect, on
             const problems = draft.validation.checks.filter(
               (check) => check.status === 'FAIL' || check.status === 'UNKNOWN',
             )
-            const confirmable = draft.status === 'pending' && draft.validation.overall === 'PASS'
+            const recommendation = recommendationChecks.find(c=>JSON.stringify(c.plan)===JSON.stringify(draft.plan))
+            const confirmable = draft.status === 'pending' && draft.validation.overall === 'PASS' && (requireRecommendation ? recommendation?.validation.overall === 'PASS' : !recommendation || recommendation.validation.overall === 'PASS')
             const selected = draft.draft_id === selectedDraftId
             const hint =
               draft.status === 'stale'
                 ? '已失效：请按最新状态重新生成'
                 : draft.status === 'committed'
                   ? `已形成正式版本 V${draft.committed_version ?? '?'}`
-                  : draft.validation.overall !== 'PASS'
+                  : !confirmable
                     ? 'B 端核验未通过，不能确认'
                     : busy
                       ? '正在提交…'

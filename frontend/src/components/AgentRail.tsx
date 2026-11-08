@@ -66,13 +66,12 @@ export function AgentRail({ trace, running }: { trace: TraceRun | null; running:
       ) : (
         <div className="rail-empty">
           <strong>等待第一次运行</strong>
-          创建行程或上报异常后，这里会显示「控制器 → 工具 → 候选」的时序轨迹。A 的 AgentArts
-          尚未接入，当前为本地演示轨迹。
+          AgentArts 尚未接入。规则推荐的地图、天气和核验结果可在路线对比中查看。
         </div>
       )}
 
       <p className="rail-note">
-        本地演示轨迹 · 模拟数据 · AgentArts 接入后替换为真实 trace；工具与核验结果以 B 端返回为准。
+        {trace ? '模拟演示轨迹；不代表真实 AgentArts 调用或耗时。' : '未调用 AgentArts，不生成执行轨迹或耗时。'}
       </p>
     </details>
   )

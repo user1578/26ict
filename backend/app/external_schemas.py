@@ -28,6 +28,8 @@ class SearchPlacesRequest(Contract):
 
 
 class Place(Contract):
+    category: str | None = None
+    indoor: bool | None = None
     poi_id: Identifier
     name: Text
     address: str | None = None
@@ -61,7 +63,7 @@ class RouteOption(Contract):
 
 class WeatherRequest(Contract):
     location: Coordinates
-    coordinate_system: Literal["WGS84"] = "WGS84"
+    coordinate_system: Literal["WGS84", "GCJ-02"] = "WGS84"
     on_date: date
     timezone: Literal["Asia/Shanghai"] = "Asia/Shanghai"
     activity_type: Literal["outdoor", "indoor"] = "outdoor"

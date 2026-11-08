@@ -6,9 +6,10 @@ import { defineConfig, loadEnv } from 'vite'
 // 密钥只从启动进程的环境变量读取，绝不放 VITE_ 变量，避免打进浏览器包。
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
+  const backendEnv = loadEnv(mode, fileURLToPath(new URL('../backend', import.meta.url)), '')
   const target = process.env.TRAVELGUARD_API_BASE ?? env.TRAVELGUARD_API_BASE ?? 'http://127.0.0.1:8000'
   const toolKey =
-    process.env.TRAVELGUARD_TOOL_KEY ?? env.TRAVELGUARD_TOOL_KEY ?? process.env.TRAVELGUARD_TOOL_API_KEY ?? ''
+    process.env.TRAVELGUARD_TOOL_KEY ?? env.TRAVELGUARD_TOOL_KEY ?? process.env.TRAVELGUARD_TOOL_API_KEY ?? env.TRAVELGUARD_TOOL_API_KEY ?? backendEnv.TRAVELGUARD_TOOL_API_KEY ?? ''
 
   return {
     plugins: [react()],

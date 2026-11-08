@@ -6,37 +6,35 @@ TravelGuard（旅途智盾）华为 ICT 大赛赛题 2 的 React 前端。
 
 ## 快速开始
 
-### 1. 启动 B 端（FastAPI）
+### 1. 在原项目启动后端
+
+本集成分支已包含 C 最新界面和 B 接口，无需切换分支或创建第二套项目。首次使用时，按 `backend/README.md` 安装依赖，并将本机凭据保存在被 Git 忽略的 `backend/.env`。
 
 ```powershell
-# 在仓库根目录；使用 B 的 hsh/backend 分支（或对应 worktree）
-$env:TRAVELGUARD_TOOL_API_KEY = 'dev-secret'
-$env:TRAVELGUARD_DB_PATH = 'D:\project\audit\backend-dev.sqlite3'
-backend\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+# 在原仓库根目录运行。现有 backend/.venv 可直接复用。
+$env:TRAVELGUARD_DB_PATH = "$PWD\backend\.pytest_cache\integration-live.local.sqlite3"
+backend\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000
 ```
 
-（没有 `backend/.venv` 时先按 B 的 `backend/README.md` 建 Python 3.11 虚拟环境并安装 `requirements-dev.txt`。）
+`.pytest_cache` 父目录需存在。示例使用独立联调库，不会操作默认业务库。后端自动加载 `backend/.env`；Vite 代理也从该目录读取工具认证配置，进程变量优先。`frontend/.env` 中显式配置的 `TRAVELGUARD_TOOL_KEY` 优先级更高，若设置必须与后端一致。
 
 ### 2. 启动前端
 
 ```powershell
 cd frontend
-npm install
-$env:TRAVELGUARD_TOOL_KEY = 'dev-secret'             # 必须与 B 的 TRAVELGUARD_TOOL_API_KEY 一致
-$env:TRAVELGUARD_API_BASE = 'http://127.0.0.1:8000'  # 可选，默认就是它
-npm run dev
+npm ci                 # 已安装且 lockfile 未变时跳过
+npm run dev -- --host 127.0.0.1 --port 5174 --strictPort
 ```
 
-打开 <http://localhost:5173/>。浏览器只请求同源 `/api/...`，由 Vite 开发代理在服务端注入 `X-Tool-Key`；**密钥不会进入浏览器包**。
+打开 <http://127.0.0.1:5174/>。浏览器只请求同源 `/api/...`，Vite 在服务端注入 `X-Tool-Key`；工具密钥与外部服务 Key 均不进入浏览器。`/api/health` 可检查完整代理链路。502 表示代理不能连接后端；401/503 应检查两端启动进程的鉴权配置，不要改成 mock 掩盖问题。
 
-### 3. 模式切换
+### 3. 真实推荐与测试模式
 
-| 模式 | 打开方式 | 说明 |
-| --- | --- | --- |
-| 真实后端（默认） | `npm run dev` / `http://localhost:5173/` | 写操作、核验、版本都来自 B 的 FastAPI；刷新/分享链接可按 `?trip=` 恢复 |
-| 本地模拟 | `http://localhost:5173/?mode=mock`，或设置 `VITE_TRAVELGUARD_MODE=mock` | 纯内存 mock，接口形状/状态机/错误码按 B 实现近似，不访问后端；刷新无法恢复 |
+普通页面不显示开发模式切换。填写出发城市、目的地、抵达点、返程站、1至7日日期及预算后，先查看三条规则候选，再明确选择保存 V1。地图地点、路线、天气有来源和查询时间，未知开放、预约、费用及远期天气不当作 PASS。规则模块未调用 AgentArts，不生成虚构调用轨迹或耗时。
 
-页面右上角有模式切换链接和主题切换；切换模式会重置当前演示状态。
+真实异常由用户上报，初始为未核实。外部事实补充核实后可点击“重新查询调整候选”，通过全部必要核验的方案才写为 B 草案，并由用户确认。规划展示上下文缓存在当前浏览器，正式版本、修订号和历史来自 B；换浏览器或清空缓存时正式版本可读取，继续规划会明确阻止并提示恢复资料，不回退模拟。
+
+自动化测试仍可显式使用 `?mode=mock`，所有模拟来源标注清楚；该模式不访问后端、刷新不持久化。它不作为真实服务联调证据。
 
 ## 界面结构
 
@@ -65,12 +63,12 @@ npm run dev      # 开发服务器
 npm run build    # tsc -b + vite build（必须通过）
 npm run lint     # oxlint（当前 0 warning / 0 error）
 npm run test     # vitest：金额/时间、本地核验、规划器、mock 状态机
-npm run e2e      # 端到端：B 后端 8000 + 本前端 dev 5173 + 本机 Edge
+npm run e2e      # 本机 Edge；隔离闭环 + 正常8000/5174服务的真实接口验证
 ```
 
 `npm run e2e` 用本机 Edge（playwright-core，无需下载浏览器）跑真实页面：
 创建 V1 → 上报晚点 → 决策坞 → 确认 V2 → 上报闭馆 → 决策坞 → 确认 V3 → 版本档案 → 深/浅主题 → 移动端 → mock 模式。
-截图默认写到 `D:\project\audit\screens-redesign\`，可用 `E2E_URL`、`E2E_SHOTS`、`EDGE_PATH` 覆盖。
+截图默认写到原项目 `.cache/integration/screenshots/`，可用 `E2E_URL`、`E2E_SHOTS`、`EDGE_PATH` 覆盖。
 
 ## 目录结构
 
@@ -110,7 +108,7 @@ frontend/src/
 - 一个草案 = 一份完整 `TravelPlan`；对比通过 `GET /drafts` 多草案并排，不传 `options[]`。
 - 确认按钮仅当 `draft.status==='pending' && validation.overall==='PASS'` 可用；`confirm` 带三修订号 + `user_confirmed:true`。
 - 409 / 422 统一处理：`revision_conflict` 等冲突自动刷新状态；`verification_blocked` 展示 B 的核验明细。
-- 不使用 `/plan`、`/replan`（B 未提供）：演示方案由前端本地生成并显式标注「模拟」，真实规划入口待 A 提供。
+- 不使用 `/plan`、`/replan`（B 未提供）：真实规则候选由 `/api/recommendations` 与 `/api/trips/{id}/recommendations` 提供，独立于未来 A 的 AgentArts 入口；仅显式 mock 测试使用原前端演示规划器。
 
 ## 数据与证据
 

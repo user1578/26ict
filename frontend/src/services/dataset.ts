@@ -84,8 +84,13 @@ export const dataset = {
 export const poiById = new Map<string, PoiRecord>(pois.map((record) => [record.poi_id, record]))
 export const ruleByPoiId = new Map<string, RuleRecord>(rules.map((record) => [record.poi_id, record]))
 
+const liveNames = new Map<string, string>()
+export function registerPlaces(places: Array<{poi_id: string; name: string}>) {
+  for (const place of places) liveNames.set(place.poi_id, place.name)
+}
+
 export function poiName(poiId: string): string {
-  return poiById.get(poiId)?.name ?? poiId
+  return liveNames.get(poiId) ?? poiById.get(poiId)?.name ?? poiId
 }
 
 export function poiRule(poiId: string): RuleRecord | undefined {

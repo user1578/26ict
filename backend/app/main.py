@@ -6,6 +6,8 @@ from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 
+from .config import load_local_env
+from .recommendation_api import router as recommendation_router
 from .logic import calculate_budget, validate_plan
 from .external_api import router as external_router
 from .schemas import BudgetRequest, BudgetResult, ValidatePlanRequest, ValidatePlanResult
@@ -15,6 +17,7 @@ from .travel_store import TravelStore
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    load_local_env()
     default_path = Path(__file__).resolve().parents[1] / "travelguard.local.sqlite3"
     app.state.travel_store = TravelStore(os.getenv("TRAVELGUARD_DB_PATH", str(default_path)))
     app.state.travel_store.initialize()
@@ -34,8 +37,10 @@ def require_tool_key(x_tool_key: Annotated[str | None, Header()] = None) -> None
 
 app.include_router(travel_router, dependencies=[Depends(require_tool_key)])
 app.include_router(external_router, dependencies=[Depends(require_tool_key)])
+app.include_router(recommendation_router, dependencies=[Depends(require_tool_key)])
 
 
+@app.get("/api/health")
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "travelguard-backend"}

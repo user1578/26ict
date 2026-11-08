@@ -2,7 +2,7 @@
 
 Python 3.11、FastAPI、标准库 SQLite。提供预算与约束工具，以及初始正式行程、连续异常、重规划草案、用户确认和正式版本持久化的单机闭环。本文及 `/docs`、`/openapi.json` 是 B 端当前接口说明，供 A、C 后续联调。
 
-后端接收结构化方案并做确定性核验；AgentArts 推理和 React 交互分别由 A、C 实现。已提供高德地图、和风天气及本地地点规则适配器，真实地图/天气尚未使用密钥联调；没有付款、退款、预约、改签或华为云连接。
+后端接收结构化方案并做确定性核验；AgentArts 推理和 React 交互分别由 A、C 实现。已提供高德地图、和风天气及本地地点规则适配器，集成分支已通过真实高德地点/路线及和风逐日预报联调；没有付款、退款、预约、改签或华为云连接。
 
 第五阶段新增 WF_Replan v0.1.0 离线适配及独立重规划评估工具，使用显式 simulation fixtures；不新增公开 API，不更改 SQLite v2 或既有确认门槛。运行命令、字段映射、候选支持资料和返程/固定活动未决语义见 [本地适配说明](../docs/wf_replan_adapter_notes.md)。
 
@@ -10,7 +10,7 @@ Python 3.11、FastAPI、标准库 SQLite。提供预算与约束工具，以及�
 
 跨模块接口契约草案见 [docs/api_contract.md](../docs/api_contract.md)，待 A、C 共同确认后稳定。新增工具为 `search_places`、`get_place_rules`、`get_route_options`、`get_weather_risk`，HTTP 路径采用 `/api/tools/` 下对应连字符名称，且均需 `X-Tool-Key`。原预算、校验和旅行状态字段保持兼容，校验工具补充了返程到站时间不能早于活动结束的检查。
 
-配置示例见 `.env.example`；这些变量必须传入后端进程，本服务不自动加载 `.env`。外部 Key 不得传入 React，开发联调由 C 的本机服务代理在服务端注入工具密钥，不能使用 `VITE_` 变量打包密钥。未配置密钥或本地规则、服务超时/失败、缺字段、规则过期、超出预报日期范围均返回结构化 UNKNOWN；生产代码没有自动模拟数据模式。测试通过注入 MockTransport 标记 `simulated`，不会连接真实付费服务。
+配置示例见 `.env.example`；启动时自动读取被 Git 忽略的 `backend/.env`，已有进程环境变量优先。示例文件不能填写真实凭据。外部 Key 不得传入 React，开发联调由 C 的本机服务代理在服务端注入工具密钥，不能使用 `VITE_` 变量打包密钥。未配置密钥或本地规则、服务超时/失败、缺字段、规则过期、超出预报日期范围均返回结构化 UNKNOWN；生产代码没有自动模拟数据模式。测试通过注入 MockTransport 标记 `simulated`，不会连接真实付费服务。
 
 规则知识库由 `TRAVELGUARD_RULES_PATH` 指向维护方提供的 JSON；未配置不会读取或改动 C 的 `data/`。规则覆盖完整访问时段、采集时间不超过 7 日且带真实来源和核实标记时才输出可用事实，预约规则永远不代表个人预约成功。路线只返回查询时刻参考；缺少步行时间、费用保持 `null`。天气只查询中国时区今天起 7 日内的逐日预报，使用和风 Daily Forecast v1；风险为本地阈值筛选，未接入气象预警。详情及局限见契约。
 
@@ -183,3 +183,13 @@ E2：`PUT /api/trips/wuhan/events/E2`
 响应中的 `current_plan` / 正式版本含 `plan`、预算结果、核验结果、版本绑定、来源草案、创建时间及 `confirmation`。初始 V1 的 `confirmation=null`，表示显式创建初始行程；后续确认含 `request_id`、`confirmed_by`、`confirmed_at`。草案状态为 `pending|stale|committed`。
 
 常见状态：401/503 认证问题；404 资源不存在；409 幂等键/资源 ID/版本/修订冲突；422 输入错误或核验阻止提交（后者含 `detail.code=verification_blocked` 与完整 `validation`）；存储异常返回 500 并回滚。对外开放前仍需正式用户认证、HTTPS、资源隔离和外部事实核验。
+
+## 集成分支：规则路线推荐
+
+`POST /api/recommendations` 与 `POST /api/trips/{trip_id}/recommendations` 复用高德、和风及地点规则适配器，仅查询和生成候选，不修改旅行或执行交易。调用仍需 `X-Tool-Key`。输入/输出说明见 `docs/api_contract.md` 的规则推荐一节。
+
+支持1至7日、目的地抵达点、返程站截止、整团预算和每次步行偏好；生成均衡、少步行、天气友好三类有限候选，不声称全局最优。跨城长途交通不在高德市内路线规划范围，用户约定抵达时间，长途票价、食宿等另行估算。天气仅查询今天起7日，超出范围 UNKNOWN。室内属性仅是地点分类推断。
+
+开放、预约、票价知识库未配置时，真实候选保留 UNKNOWN，不能建立正式 V1。新增或变化的未经核实用户异常同样阻止正式确认。已有费用与全量重新估算无法对账时保留原流水并阻止确认；不凭名称推断付款对应关系。SQLite 仍为 schema v2，正式版本继续使用原有创建/草案/确认接口。
+
+本机端到端验收在 `frontend/` 执行 `npm run e2e`。脚本在同一目录启动临时端口的 FastAPI 与 Vite，使用 `backend/tests/e2e_server.py` 明确模拟外部事实和独立 `.pytest_cache/e2e-*.local.sqlite3`；随后对正常运行在 8000/5174 的真实服务验证地图和天气。不会修改原业务库。`E2E_SKIP_LIVE=1` 只运行隔离闭环，不代表真实接口已验证。
