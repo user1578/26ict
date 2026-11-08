@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api/tools", tags=["外部数据工具"])
 
 
 def provider_http():
-    # No retries, redirects, or implicit proxy credentials. At most three route calls.
+    # No retries, redirects, or implicit proxy credentials. At most four route modes per leg.
     with httpx.Client(timeout=5, follow_redirects=False, trust_env=False) as client:
         yield ProviderHTTP(client)
 

@@ -40,5 +40,5 @@ export function createApi(mode: ApiMode = resolveApiMode()): TravelGuardApi {
 }
 
 export function apiModeLabel(mode: ApiMode): string {
-  return mode === 'mock' ? '本地模拟模式' : '真实后端模式'
+  return mode === 'mock' ? '演示数据' : '行程规划'
 }

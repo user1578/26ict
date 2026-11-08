@@ -1945,3 +1945,21 @@
 .recommendation-panel .day-list { list-style: none; padding: 0; }
 .recommendation-panel .activity-note { display: block; }
 @media (max-width: 760px) { .recommendation-choices { grid-template-columns: 1fr; } }
+
+/* Consumer guide hierarchy, using the existing C-side cards and semantic colors. */
+.guide-overview, .daily-weather { margin-block: var(--s3); }
+.guide-budget { display: flex; flex-wrap: wrap; gap: var(--s3); padding-block: var(--s3); }
+.guide-warning { color: var(--warn, #c58a45); }
+.guide-transport { font-weight: 600; }
+.guide-extras, .return-summary, .external-options { margin-top: var(--s5); padding-top: var(--s4); border-top: 1px solid var(--line, #334044); }
+.guide-search, .guide-place-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s3); align-items: start; }
+.guide-search .btn { align-self: end; }
+.guide-place-grid .draft-card { min-width: 0; }
+.guide-extras nav { display: flex; flex-wrap: wrap; gap: var(--s4); margin-block: var(--s3); }
+.meal-suggestions { margin-top: var(--s4); }
+.guide-evidence pre, .guide-extras pre { max-height: 28rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .8rem; }
+.transport-options { display: flex; flex-wrap: wrap; gap: var(--s3); border: 0; padding: 0; }
+.transport-options legend { margin-bottom: var(--s2); }
+.field select { width: 100%; min-height: 40px; padding: 8px; color: inherit; background: var(--bg, transparent); border: 1px solid var(--line, #334044); font: inherit; }
+.formal-records { margin: var(--s4); }
+@media (max-width: 760px) { .guide-search, .guide-place-grid { grid-template-columns: 1fr; } }

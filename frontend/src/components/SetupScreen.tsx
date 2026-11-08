@@ -1,6 +1,7 @@
 import type { FormEvent } from 'react'
 import type { ApiMode } from '../services/client.ts'
-import { apiModeLabel } from '../services/client.ts'
+import type { TransportMode } from '../services/recommendations.ts'
+import { transportLabels } from '../services/guide.ts'
 import { Icon } from './ui.tsx'
 
 export interface TripFormValues {
@@ -16,6 +17,7 @@ export interface TripFormValues {
   partySize: string
   budget: string
   walkingLimit: string
+  allowedModes: TransportMode[]
   returnTime: string
   stayTogether: boolean
 }
@@ -51,8 +53,8 @@ export function SetupScreen({ values, error, busy, mode, onChange, onSubmit }: P
         </p>
         <div className="hero-meta">
           <span>多目的地 · 多日路线</span>
-          <span>{apiModeLabel(mode)}</span>
-          <span>独立规则推荐 · AgentArts 待接入</span>
+          {mode === 'mock' && <span>演示数据</span>}
+          <span>地图路线 · 天气参考 · 自由选择</span>
         </div>
 
         <ol className="runbook">
@@ -68,7 +70,7 @@ export function SetupScreen({ values, error, busy, mode, onChange, onSubmit }: P
           ))}
         </ol>
 
-        <p className="hero-note">地图和天气有来源与查询时间；开放、预约和费用未知时不会当作已核实。模拟测试始终标注来源。</p>
+        <p className="hero-note">地图和天气有来源与查询时间；开放、预约和费用未知时不会当作已核实。</p>
       </section>
 
       <form
@@ -80,7 +82,7 @@ export function SetupScreen({ values, error, busy, mode, onChange, onSubmit }: P
       >
         <div className="brief-head">
           <h2 className="brief-title">任务简报</h2>
-          <span className={`badge badge-${mode === 'mock' ? 'sim' : 'neutral'}`}>{mode === 'mock' ? '模拟测试' : '地图与天气'}</span>
+          <span className={`badge badge-${mode === 'mock' ? 'sim' : 'neutral'}`}>{mode === 'mock' ? '演示数据' : '地图与天气'}</span>
         </div>
 
         <div className="form-grid">
@@ -145,17 +147,13 @@ export function SetupScreen({ values, error, busy, mode, onChange, onSubmit }: P
               onChange={(event) => onChange({ budget: event.target.value })}
             />
           </label>
-          <label className="field">
-            <span className="field-label">
-              每次最多愿意走多久 <em>分钟</em>
-            </span>
-            <input
-              type="number"
-              min="0"
-              step="5"
-              value={values.walkingLimit}
-              onChange={(event) => onChange({ walkingLimit: event.target.value })}
-            />
+          <fieldset className="field field-wide transport-options"><legend>愿意使用哪些出行方式</legend>
+            {(Object.entries(transportLabels) as Array<[TransportMode, string]>).map(([key, label]) => <label key={key} className="checkbox-field"><input type="checkbox" data-testid={`mode-${key}`} checked={values.allowedModes.includes(key)} onChange={event => onChange({ allowedModes: event.target.checked ? [...values.allowedModes, key] : values.allowedModes.filter(mode => mode !== key) })} />{label}</label>)}
+          </fieldset>
+          <label className="field"><span className="field-label">每次最多愿意走多久</span>
+            <select value={values.walkingLimit} onChange={event => onChange({walkingLimit: event.target.value})} data-testid="walking-preference">
+              <option value="10">10分钟以内</option><option value="20">20分钟以内</option><option value="30">30分钟以内</option><option value="">不限制</option>
+            </select>
           </label>
           <label className="field">
             <span className="field-label">
@@ -181,13 +179,13 @@ export function SetupScreen({ values, error, busy, mode, onChange, onSubmit }: P
 
         <div className="form-actions">
           <button type="submit" className="btn btn-primary" disabled={busy} data-testid="create-trip">
-            {busy ? '正在查询地图与天气…' : mode === 'mock' ? '生成模拟测试 V1' : '生成路线推荐'}
+            {busy ? '正在查询地图与天气…' : mode === 'mock' ? '生成演示行程' : '生成路线推荐'}
             <Icon name="arrow" size={15} />
           </button>
           {busy && <span className="spinner" aria-hidden="true" />}
         </div>
 
-        {mode === 'mock' && <p className="mode-note">模拟测试数据，不代表真实开放、预约或付款。</p>}
+        {mode === 'mock' && <p className="mode-note">演示数据，不代表真实开放、预约或付款。</p>}
       </form>
     </div>
   )

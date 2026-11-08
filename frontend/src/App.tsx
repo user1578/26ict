@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { RecommendationPanel } from './components/RecommendationPanel.tsx'
-import { recommend, readPlanning, savePlanning, type PlanningBundle, type PlanningInput, type Recommendation } from './services/recommendations.ts'
+import { recommend, readPlanning, savePlanning, type PlanningBundle, type PlanningInput, type Recommendation, type Place } from './services/recommendations.ts'
 import { registerPlaces } from './services/dataset.ts'
 import { AgentRail } from './components/AgentRail.tsx'
 import { BudgetRail } from './components/BudgetRail.tsx'
@@ -46,6 +46,7 @@ const DEFAULT_FORM: TripFormValues = {
   partySize: '3',
   budget: '1300',
   walkingLimit: '20',
+  allowedModes: ['transit','walking'],
   returnTime: '17:00',
   stayTogether: true,
 }
@@ -128,6 +129,7 @@ export default function App() {
     const walkingLimit = form.walkingLimit.trim() === '' ? null : Number(form.walkingLimit)
     const budget = form.budget.trim()
 
+    if (form.allowedModes.length===0) { setFormError('请至少选择一种出行方式'); return }
     if (!form.city.trim()) {
       setFormError('请填写城市')
       return
@@ -178,11 +180,11 @@ export default function App() {
           arrival_station:form.arrivalStation.trim(),return_station:form.returnStation.trim(),keywords:form.keywords.trim(),
           start_date:input.startDate,end_date:input.endDate,party_size:input.partySize,budget_cny:input.budgetCny,
           max_walking_minutes_per_leg:input.walkingLimit,arrival_time:form.arrivalTime,return_time:input.returnTime,
-          stay_together:input.stayTogether,other_costs_cny:form.otherCosts.trim() || null }
+          stay_together:input.stayTogether,other_costs_cny:form.otherCosts.trim() || null, allowed_modes:form.allowedModes }
         const bundle = await recommend(query)
         registerPlaces(bundle.places)
         setPlanning(bundle)
-        setNotice(`已完成地图与天气查询，取得 ${bundle.candidates.length} 条规则候选；请选择方案核对后保存。`)
+        setNotice(`已完成地图与天气查询，取得 ${bundle.candidates.length} 份旅行建议；请选择方案核对后保存。`)
         return
       }
       const created = await api.createTrip(buildCreateTripRequest(input))
@@ -192,7 +194,7 @@ export default function App() {
       setTrace(createPlanTrace(created))
       setSelectedDraftId(null)
       setNotice(
-        `已创建正式版本 V1（${apiModeLabel(mode)}），核验 ${created.current_plan.validation.overall}。初始方案由前端演示规划器生成，证据为模拟数据。`,
+        `已创建正式版本 V1（${apiModeLabel(mode)}），核验 ${created.current_plan.validation.overall}。演示数据仅供体验，不构成真实业务凭证。`,
       )
       rememberTrip(created)
     } catch (caught) {
@@ -200,6 +202,20 @@ export default function App() {
     } finally {
       setBusy(false)
     }
+  }
+
+  const handleChooseStay = async (place: Place) => {
+    if (!planning || busy) return
+    setBusy(true); setError(null)
+    try {
+      const input={ ...planning.input, lodging_poi_id:place.poi_id, lodging_name:place.name }
+      const bundle=await recommend(input,trip?.trip_id)
+      registerPlaces(bundle.places)
+      setPlanning(bundle)
+      if (trip) savePlanning(trip.trip_id,bundle)
+      setNotice(`已将${place.name}纳入住宿往返路线。房态、价格及入住条件仍需确认。`)
+    } catch(caught) { await handleError(caught,trip?.trip_id ?? null) }
+    finally { setBusy(false) }
   }
 
   const handleSaveRecommendation = async (candidate: Recommendation) => {
@@ -214,7 +230,7 @@ export default function App() {
       setTrace(null)
       savePlanning(created.trip_id, planning)
       rememberTrip(created)
-      setNotice('已按你的选择保存正式 V1；AgentArts 尚未接入。')
+      setNotice('已按你的选择保存正式行程 V1。')
     } catch (caught) { await handleError(caught,null) }
     finally { setBusy(false) }
   }
@@ -250,7 +266,7 @@ export default function App() {
     kind: EventKind,
   ) => {
     if (!trip || busy) return
-    if (mode === 'real' && !planning) { setSheet(null); setError('本机缺少此旅行的规划上下文，请在原浏览器恢复资料或重新创建旅行；不会改用模拟方案。'); return }
+    if (mode === 'real' && !planning) { setSheet(null); setError('本机缺少此旅行的规划上下文，请在原浏览器恢复资料或重新创建旅行。'); return }
     setBusy(true)
     setError(null)
     setErrorValidation(null)
@@ -274,7 +290,7 @@ export default function App() {
       setTrace(reportEventTrace(refreshed ?? updated, kind, eventId))
       setSelectedDraftId(null)
       setNotice(
-        `${label}：已记录 ${eventId}（模拟上报），生成 ${draftRequests.length} 份候选草案；请在决策坞对比后确认。`,
+        `${label}：已记录 ${eventId}（演示数据），生成 ${draftRequests.length} 份候选草案；请在决策坞对比后确认。`,
       )
       rememberTrip(updated)
     } catch (caught) {
@@ -304,7 +320,7 @@ export default function App() {
       setTrace(mode === 'mock' || !planning ? confirmTrace(draft.draft_id, version.version) : null)
       setSelectedDraftId(null)
       setNotice(
-        `已确认 ${draft.draft_id}，正式版本升级为 V${version.version}；其他候选自动失效，核验结果以 B 端返回为准。`,
+        `已确认选择，行程已保存为 V${version.version}；其他候选已失效。`,
       )
       if (refreshed) rememberTrip(refreshed)
     } catch (caught) {
@@ -334,7 +350,7 @@ export default function App() {
     const tripId = readTripId()
     if (!tripId) return
     if (mode === 'mock') {
-      setNotice('本地模拟模式无法按链接恢复；请重新创建行程。')
+      setNotice('演示行程无法按链接恢复；请重新创建行程。')
       return
     }
     let cancelled = false
@@ -353,7 +369,7 @@ export default function App() {
         setDrafts(restoredDrafts)
         setVersions(restoredVersions.length > 0 ? restoredVersions : [restoredTrip.current_plan])
         setTrace(null)
-        setNotice(`已恢复 ${tripId} · 正式版本 V${restoredTrip.current_version}`)
+        setNotice(`已恢复保存的行程 · 版本 V${restoredTrip.current_version}`)
       } catch (caught) {
         if (cancelled) return
         if (caught instanceof ApiError && caught.status === 404) {
@@ -421,11 +437,11 @@ export default function App() {
 
       {restoring ? (
         <div className="loading-screen" aria-live="polite">
-          <span className="badge badge-neutral">RESTORE · 读取正式状态</span>
+          <span className="badge badge-neutral">读取已保存行程</span>
           <div className="skeleton wide" />
           <div className="skeleton skeleton tall" />
           <div className="skeleton wide" />
-          <p className="form-hint">正在从 B 端恢复 trip / drafts / versions…</p>
+          <p className="form-hint">正在读取行程与版本记录…</p>
         </div>
       ) : !trip ? (
         <>
@@ -437,13 +453,13 @@ export default function App() {
           onChange={handleChange}
           onSubmit={handleCreate}
         />
-        {planning && <RecommendationPanel bundle={planning} busy={busy} formal={false} onSave={handleSaveRecommendation}/>}
+        {planning && <RecommendationPanel key={JSON.stringify(planning.input)} bundle={planning} busy={busy} formal={false} onSave={handleSaveRecommendation} onChooseStay={handleChooseStay}/>}
         </>
       ) : (
         <>
           <BudgetRail trip={trip} />
-          {planning && <><div className="form-actions"><button type="button" className="btn btn-ghost" disabled={busy} data-testid="refresh-recommendations" onClick={handleRequery}>重新查询调整候选</button></div><RecommendationPanel bundle={planning} busy={busy} formal onSave={handleSaveRecommendation}/></> }
-          <div className="console">
+          {planning && <><div className="form-actions"><button type="button" className="btn btn-ghost" disabled={busy} data-testid="refresh-recommendations" onClick={handleRequery}>重新查询调整候选</button></div><RecommendationPanel key={JSON.stringify(planning.input)} bundle={planning} busy={busy} formal onSave={handleSaveRecommendation} onChooseStay={handleChooseStay}/></> }
+          <details className="formal-records" open={planning?.needs_refresh || undefined}><summary>查看已保存行程与变更记录</summary><div className="console">
             <RouteSpine
               trip={trip}
               candidatePlan={selectedDraft?.plan ?? null}
@@ -452,7 +468,7 @@ export default function App() {
             <aside className="rail-col">
               <AgentRail trace={trace} running={busy} />
             </aside>
-          </div>
+          </div></details>
           {hasDock && (
             <DecisionDock
               trip={trip}
@@ -483,8 +499,8 @@ export default function App() {
       )}
 
       <footer className="footer">
-        <span>TravelGuard · Live Agent Console · {apiModeLabel(mode)}</span>
-        <span>{mode === 'mock' ? '模拟数据 · 自动化测试' : '地图与天气有来源标记 · 未知不当作通过 · AgentArts 尚未接入'}</span>
+        <span>TravelGuard · 旅途智盾</span>
+        <span>{mode === 'mock' ? '演示数据' : '地图与天气仅供参考 · 未核实事项请出行前确认'}</span>
       </footer>
     </div>
   )

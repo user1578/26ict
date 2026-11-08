@@ -29,7 +29,7 @@ export function MissionBar({
   onOpenSignal,
   onReset,
 }: Props) {
-  const statusLabel = busy ? '正在处理' : hasTrace ? '已有处理记录' : '规则规划就绪'
+  const statusLabel = busy ? '正在处理' : hasTrace ? '已有处理记录' : '规划就绪'
   const statusTone = busy ? 'busy' : hasTrace ? 'live' : ''
 
   return (

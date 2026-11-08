@@ -360,7 +360,7 @@ P6 与 `origin/cmx/frontend@1eaae97` 的只读核对结果如下（前端尚未�
  "coordinate_system":"GCJ-02","modes":["walking"],"city":"武汉"}
 ```
 
-默认 modes 为 walking/transit/driving，不能为空或重复；公交必须有 `city`，跨城由调用方另传 `destination_city`。每模式最多3个候选，最多3次上游查询。
+工具接口默认 modes 仍为 walking/transit/driving，新增可选 bicycling；不能为空或重复，最多4种。公交必须有 `city`，跨城由调用方另传 `destination_city`。每模式最多3个候选，每路段最多4次上游查询。
 
 ```json
 {"status":"PASS","results":[{"mode":"walking","status":"PASS","code":"ok",
@@ -371,7 +371,7 @@ P6 与 `origin/cmx/frontend@1eaae97` 的只读核对结果如下（前端尚未�
  "data":[{"duration_seconds":900,"distance_meters":1000,"walking_seconds":900,"cost_cny":null}]}]}
 ```
 
-公交 `walking_seconds` 仅在各段步行耗时齐备时求和，否则 null；驾车不假定步行段为0。公交费用可能有来源估算；驾车费用暂为 null（不擅自把过路费当作完整用车费用）。当前无出发日期/时刻参数，不承诺指定未来日期交通有效、班次可预约或票价固定；路线返回的是查询时刻参考。
+公交 `walking_seconds` 仅在各段步行耗时齐备时求和，否则 null；驾车不假定步行段为0。公交费用可能有来源估算；驾车费用暂为 null（不擅自把过路费当作完整用车费用）。新增可选 `departure_at`（必须带时区），公交请求转换到中国时区后传入高德的 date/time，按旅行时段筛选；缺省仍按旧接口行为查询。驾车、步行和骑行不虚构未来路况或班次，也不承诺未来票价固定。
 
 ### 4.6 `get_weather_risk`
 
@@ -450,12 +450,30 @@ P6 与 `origin/cmx/frontend@1eaae97` 的只读核对结果如下（前端尚未�
  "stay_together":true,"other_costs_cny":"200.00"}
 ```
 
-`other_costs_cny` 为地图/票价以外的整团费用估算，null 表示未知，不能自动当作0。市内游览从目的地抵达点及用户约定时间开始；不查询或虚构跨城车票与住宿订单。日期支持连续1至7日，每日默认两项90分钟游览、18:00前结束；缺少足够地点时明确标注日期覆盖不足。
+`other_costs_cny` 为地图/票价以外的整团费用估算，null 表示未知，不能自动当作0。市内游览从目的地抵达点及用户约定时间开始；不查询或虚构跨城车票与住宿订单。日期支持连续1至7日，均衡/室内候选每日默认两项90分钟游览，轻松候选每日一项；下午安排留出用餐间隔，游览18:00前结束；缺少足够地点时明确标注日期覆盖不足。
 
 响应包括 `generator: rules-v1`、`agentarts_connected: false`、原始 `input`、真实搜索的 `places/searches`、抵达/返程点候选、`candidates` 及用于既有创建接口的 `trip_request` 公共字段。每个候选包含完整 `TravelPlan`、逐活动的地点/天气/规则、全部路段三种方式的结果、已知费用小计/费用完整性/预算余量、排序原因/取舍/待核实事项及核验结果。费用未知不置0，步行/交通总时长不完整时为 null。票价及交通费用按人数计算，其他费用输入按整团计算。
 
-排序先比较必要核验状态，再比较共同评分：步行分钟×0.7 + 交通分钟×0.2 + 已知人民币费用×0.03 + 每处户外天气风险30分。候选生成与交通方式选择分别偏向均衡、少步行及室内推断，有限方案排序不构成全局最优证明；室内分类推断不能当作核实的安全保证。
+排序先比较必要核验状态，再比较共同评分：步行分钟×0.7 + 交通分钟×0.2 + 已知人民币费用×0.03 + 每处户外天气风险30分。候选生成与交通方式选择分别偏向均衡、减少游览负担及室内推断；先排除已知步行超限和未允许方式，再按真实路段估算搜索附近景点组合。仅在实际总步行严格更少时使用“少步行”标签，相同行程与交通合并，不能凑数。有限方案排序不构成全局最优证明；室内分类推断不能当作核实的安全保证。
 
 推荐不修改数据库。前端仅在推荐必要核验 PASS 后调用既有创建/草案接口，再由 B 在正式确认事务内重新校验版本、异常、历史锁定、资金及预约事实。用户上报默认未核实，不能确认；不得由推荐模块虚构核实记录。旧费用只允许替换标记为 `rules-v1:aggregate-estimate` 的本引擎 planned 聚合估算，其余原流水/退款/证据保留；覆盖关系无法对账时 UNKNOWN 阻止确认。标记不表示实际支付。
 
 地图使用高德 GCJ-02；和风支持控制台合法多级 `*.qweatherapi.com` 专属域名，也接受无路径/用户信息/端口的 HTTPS 根地址。主机格式和坐标处理参考 [和风 API Host](https://dev.qweather.com/docs/configuration/api-host/)、[每日预报](https://dev.qweather.com/docs/api/weather/weather-daily-forecast/)、[坐标约定](https://dev.qweather.com/docs/resource/glossary/)。7日预报范围不因供应商扩展而自动放宽。
+
+### 攻略与交通偏好（本轮集成）
+
+推荐输入新增 `allowed_modes`，默认 `["transit","walking"]`，可多选 `transit/walking/bicycling/driving`。空数组、重复方式不合法；不会自动补选用户未允许的交通。路线缓存按起终点与出发时段区分；公交使用旅行日期/估计出发时间，次日活动不无条件顺延。骑行调用高德官方 HTTPS `/v4/direction/bicycling`，成功判断数值 `errcode:0`，解析 `data.paths` 的秒/米；超时、空路线或错误继续 UNKNOWN。骑行不证明共享单车车源，缺失租金不置0；驾车不提供出租车报价、停车费或取车接驳保证。
+
+响应 `format_version:2`。候选增加 `feasibility:feasible/unverified/infeasible`、`warnings`、`paid_cny/estimated_cny/missing_costs` 和 `available_balance_cny`（费用未齐时 null）。`known_cost_cny/remaining_cny` 保留兼容，不能把不完整费用下的 remaining 当成可用余额。没有完整路段或存在硬冲突时 `recommended:false`；不可行候选可供调整，不得展示为最佳可行路线。相同候选合并时 `distinct_shortfall` 明确数量不足。正式确认仍要求推荐必要核验及 B 端核验 PASS，schema v2 和事务机制未改变。
+
+### 周边住宿与美食
+
+`POST /api/guide/nearby` 同样要求 `X-Tool-Key`，仅只读查询。请求为 `city/on_date/visits`（1至6个带GCJ-02坐标的地点）、`hotel_keyword`（默认酒店）、`food_keyword`（默认地方小吃）、允许方式及步行限制；可提供 `next_day_first/next_day_date` 来查询次日酒店出发参考。
+
+复用 `/api/tools/search-places` 的新增可选字段：`location`、`radius_meters`（100至10000米）和 `types`。有 location 时使用高德 `/v3/place/around`，无 location 保持原关键词搜索。酒店半径3公里、餐饮1.5公里；结果是有限候选，不声称完整覆盖或距离最优。返回按当天景点分布推导的住宿区域、酒店候选、首个候选的往返路线，以及午餐/晚餐附近地点和可取得的路段。价格、评分、营业状态及房态未取得时保持 null/unknown。用餐时段是建议，未自动写成正式活动。
+
+用户选择酒店后，推荐请求同时提供 `lodging_poi_id/lodging_name`；服务重新搜索核对ID并加入住宿活动，重算晚间返回与次日出发，不沿用景点间旧耗时。房态和入住条件未确认，不能因此伪造预约或开放 PASS。当前一处选定住宿作为多日往返点；不支持分夜订单、预订或付款。
+
+普通页面保留必要来源及和风署名，完整坐标、路段结果、评分和核验置于“查看详细依据”。旧攻略缓存只复用输入并提示手动重新查询，正式版本从 B 恢复，不能用缺失金额补零。
+
+小红书、美团、智行仅提供经核实的 HTTPS 官网主页及可复制搜索词，不拼接未经核实的搜索 URL。没有业务合作授权，不调用内部接口，不声称实时价格/优惠/余票/房态接入。美团主页可能引导至 App，小红书可能要求登录。

@@ -8,6 +8,7 @@ from .external_api import HTTP
 from .recommendations import RecommendationEngine, RecommendationInput, stamp
 from .travel_api import Store, PathId
 from .travel_schemas import TripView
+from .travel_guide import GuideRequest, build_guide
 
 router = APIRouter(tags=['规则推荐'])
 
@@ -17,6 +18,11 @@ def recommendation_engine(http: HTTP):
 
 
 Engine = Annotated[RecommendationEngine, Depends(recommendation_engine)]
+
+
+@router.post('/api/guide/nearby')
+def guide(body: GuideRequest, engine: Engine):
+    return build_guide(body, engine)
 
 
 @router.post('/api/recommendations')

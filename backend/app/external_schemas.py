@@ -10,7 +10,7 @@ from .schemas import Status
 from .travel_schemas import Contract, EvidenceRef, Identifier, require_timezone
 
 Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
-Mode = Literal["walking", "transit", "driving"]
+Mode = Literal["walking", "transit", "bicycling", "driving"]
 
 
 class Coordinates(Contract):
@@ -25,9 +25,13 @@ class SearchPlacesRequest(Contract):
     keywords: Text
     city: Text
     limit: int = Field(default=10, ge=1, le=25)
+    location: Coordinates | None = None
+    radius_meters: int = Field(default=3000, ge=100, le=10000)
+    types: Text | None = None
 
 
 class Place(Contract):
+    district: str | None = None
     category: str | None = None
     indoor: bool | None = None
     poi_id: Identifier
@@ -41,12 +45,14 @@ class RouteRequest(Contract):
     origin: Coordinates
     destination: Coordinates
     coordinate_system: Literal["GCJ-02"] = "GCJ-02"
-    modes: list[Mode] = Field(default_factory=lambda: ["walking", "transit", "driving"], min_length=1, max_length=3)
+    modes: list[Mode] = Field(default_factory=lambda: ["walking", "transit", "driving"], min_length=1, max_length=4)
     city: Text | None = None
     destination_city: Text | None = None
+    departure_at: datetime | None = None
 
     @model_validator(mode="after")
     def valid_modes(self):
+        require_timezone(self.departure_at)
         if len(set(self.modes)) != len(self.modes):
             raise ValueError("交通方式不得重复")
         if "transit" in self.modes and self.city is None:

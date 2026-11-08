@@ -5,12 +5,12 @@ repeated provider calls. Missing evidence is retained, never filled with fixture
 """
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
-from math import ceil
+from math import ceil, cos, radians
 from typing import Annotated
 
 from pydantic import Field, StringConstraints, model_validator
 
-from .external_schemas import PlaceRulesRequest, RouteRequest, SearchPlacesRequest, WeatherRequest
+from .external_schemas import Mode, PlaceRulesRequest, RouteRequest, SearchPlacesRequest, WeatherRequest
 from .schemas import Check, Status
 from .travel_schemas import Contract, TravelPlan, TripConstraints
 from .travel_validation import validate_snapshot
@@ -40,9 +40,16 @@ class RecommendationInput(Contract):
     return_time: Clock = '17:00'
     stay_together: bool = True
     other_costs_cny: Decimal | None = Field(default=None, ge=0, decimal_places=2)
+    allowed_modes: list[Mode] = Field(default_factory=lambda: ['transit','walking'], min_length=1, max_length=4)
+    lodging_poi_id: Text | None = None
+    lodging_name: Text | None = None
 
     @model_validator(mode='after')
     def dates(self):
+        if len(set(self.allowed_modes)) != len(self.allowed_modes):
+            raise ValueError('出行方式不得重复')
+        if (self.lodging_poi_id is None) != (self.lodging_name is None):
+            raise ValueError('住宿选择必须同时提供地点ID与名称')
         if not 0 <= (self.end_date-self.start_date).days < 7:
             raise ValueError('旅行须为1至7日，结束不早于开始日期')
         if self.start_date == self.end_date and self.arrival_time >= self.return_time:
@@ -64,13 +71,14 @@ class RecommendationEngine:
         self.route_cache = {}
         self.weather_cache = {}
 
-    def route(self, origin, destination, body):
+    def route(self, origin, destination, body, departure_at=None):
         if not origin or not destination or not origin.location or not destination.location:
             return None
-        key = (origin.poi_id, destination.poi_id)
+        departure_at=departure_at or stamp(body.start_date,body.arrival_time)
+        key = (origin.poi_id, destination.poi_id, departure_at.isoformat())
         if key not in self.route_cache:
             self.route_cache[key] = self.amap.get_route_options(RouteRequest(origin=origin.location,
-                destination=destination.location, city=body.city))
+                destination=destination.location, city=body.city, modes=body.allowed_modes, departure_at=departure_at))
         return self.route_cache[key]
 
     def weather_on(self, day, place):
@@ -86,24 +94,80 @@ class RecommendationEngine:
         choices = []
         if response:
             for result in response.results:
-                if result.status != 'PASS':
+                if result.status != 'PASS' or result.mode not in body.allowed_modes:
                     continue
                 for route in result.data or []:
                     walking = route.walking_seconds
                     walking = ceil(walking/60) if walking is not None else None
+                    if body.max_walking_minutes_per_leg is not None and walking is not None and walking > body.max_walking_minutes_per_leg:
+                        continue
                     duration = ceil(route.duration_seconds/60)
                     cost = route.cost_cny
                     score = duration + (walking if walking is not None else 100)* (6 if profile == 'less_walking' else 2)
                     score += float(cost or 0) * (2 if profile == 'balanced' else .5)
                     if cost is None:
                         score += 100
-                    if walking is None or (body.max_walking_minutes_per_leg is not None and walking > body.max_walking_minutes_per_leg):
+                    if walking is None and body.max_walking_minutes_per_leg is not None:
                         score += 10000
                     choices.append((score, {'mode':result.mode, **json_value(route),
                         'duration_minutes':duration, 'walking_minutes':walking,
                         'cost_cny':format(cost, '.2f') if cost is not None else None,
                         'evidence':json_value(result.evidence)}))
         return min(choices, key=lambda x:x[0])[1] if choices else None
+
+    @staticmethod
+    def distance_order(origin, place):
+        # Geographic proximity only orders search candidates. Never used as a travel-time estimate.
+        if not origin or not origin.location or not place.location:
+            return float('inf')
+        a,b=origin.location,place.location
+        return (a.latitude-b.latitude)**2+((a.longitude-b.longitude)*cos(radians(a.latitude)))**2
+
+    def initial_activities(self, pool, days, arrival, lodging, profile, body):
+        available=list(pool)
+        activities=[]
+        previous=arrival
+        per_day=1 if profile=='less_walking' else 2
+        for day_index,day in enumerate(days):
+            if day_index and lodging:
+                previous=lodging
+            for slot in range(per_day):
+                ranked=sorted(available,key=lambda p:(p.indoor is not True if profile=='weather' else False,
+                                                     self.distance_order(previous,p),p.poi_id))
+                # Bound real provider requests. Try nearby alternatives before retaining an unknown/conflict.
+                options=[]
+                for place in ranked[:3]:
+                    departure=(datetime.fromisoformat(activities[-1]['end_at']) if activities and datetime.fromisoformat(activities[-1]['end_at']).date()==day else stamp(day,body.arrival_time if day_index==0 else '08:30'))
+                    route=self.choose(self.route(previous,place,body,departure),profile,body)
+                    if route:
+                        score=route['duration_minutes']+(route['walking_minutes'] or 0)*(6 if profile=='less_walking' else 1)
+                        if profile=='weather' and place.indoor is not True:
+                            score+=1000
+                        options.append((score,place))
+                place=min(options,key=lambda x:x[0])[1] if options else (ranked[0] if ranked else None)
+                if not place:
+                    break
+                available.remove(place)
+                start=stamp(day,body.arrival_time if day_index==0 else '09:00')+timedelta(hours=slot*5)
+                activities.append({'id':f'd{day_index+1}-visit{slot+1}','poi_id':place.poi_id,
+                    'start_at':start.isoformat(),'end_at':(start+timedelta(minutes=90)).isoformat(),
+                    'transport_minutes_from_previous':None,'walking_minutes_from_previous':None,
+                    'opening_status':'unknown','booking_required':True,'booking_status':'unknown'})
+                previous=place
+            if lodging and day_index<len(days)-1:
+                activities.append({'id':f'd{day_index+1}-stay','poi_id':lodging.poi_id,
+                    'start_at':stamp(day,'18:00').isoformat(),'end_at':stamp(day+timedelta(days=1),'08:30').isoformat(),
+                    'transport_minutes_from_previous':None,'walking_minutes_from_previous':None,
+                    'opening_status':'unknown','booking_required':True,'booking_status':'unknown'})
+                previous=lodging
+        return activities
+
+    @staticmethod
+    def route_conflict(response, body):
+        known=[r for result in response.results for r in (result.data or [])
+               if result.mode in body.allowed_modes and result.status=='PASS'] if response else []
+        return bool(known) and body.max_walking_minutes_per_leg is not None and all(
+            r.walking_seconds is not None and ceil(r.walking_seconds/60)>body.max_walking_minutes_per_leg for r in known)
 
     def recommend(self, body, trip=None):
         # A fresh engine is used for each request; maps and rules aren't persisted as trusted facts.
@@ -122,7 +186,13 @@ class RecommendationEngine:
             searches.append(result)
             stations.append((result.data or [None])[0])
         arrival, returning = stations
+        lodging=None
+        if body.lodging_poi_id and body.lodging_name:
+            stay=self.amap.search_places(SearchPlacesRequest(city=body.city,keywords=body.lodging_name,limit=10))
+            lodging=next((p for p in stay.data or [] if p.poi_id==body.lodging_poi_id and p.location),None)
         pool = list(places.values())[:18]
+        if lodging:
+            places[lodging.poi_id]=lodging
         days = [body.start_date+timedelta(days=i) for i in range((body.end_date-body.start_date).days+1)]
         candidates = []
         for index, (profile, label, reason) in enumerate(PROFILES):
@@ -179,17 +249,22 @@ class RecommendationEngine:
                             start=datetime.fromisoformat(target['start_at'])
                             target['end_at']=min(datetime.fromisoformat(target['end_at']),start+timedelta(minutes=60)).isoformat()
                 activities = plan['activities']
+                if lodging:
+                    for stay in activities:
+                        if stay['id'].endswith('-stay') and stay['id'] not in locked:
+                            stay['poi_id']=lodging.poi_id
+                    for day_index, day in enumerate(days[:-1]):
+                        current=[a for a in activities if datetime.fromisoformat(a['start_at']).astimezone(TZ).date()==day]
+                        if current and not any(a['id'].endswith('-stay') for a in current):
+                            last_today=current[-1]
+                            activities.insert(activities.index(last_today)+1, {
+                                'id':f'd{day_index+1}-stay','poi_id':lodging.poi_id,
+                                'start_at':stamp(day,'18:00').isoformat(),
+                                'end_at':stamp(day+timedelta(days=1),'08:30').isoformat(),
+                                'transport_minutes_from_previous':None,'walking_minutes_from_previous':None,
+                                'opening_status':'unknown','booking_required':True,'booking_status':'unknown'})
             else:
-                ordered = sorted(pool, key=lambda p: (p.indoor is not True, p.poi_id)) if profile == 'weather' else pool[index:]+pool[:index]
-                activities = []
-                for day_index, day in enumerate(days):
-                    chosen = ordered[day_index*2:day_index*2+2]
-                    for slot, place in enumerate(chosen):
-                        start = stamp(day, body.arrival_time if day_index == 0 else '09:00') + timedelta(hours=slot*3)
-                        activities.append({'id':f'd{day_index+1}-visit{slot+1}', 'poi_id':place.poi_id,
-                            'start_at':start.isoformat(), 'end_at':(start+timedelta(minutes=90)).isoformat(),
-                            'transport_minutes_from_previous':None,'walking_minutes_from_previous':None,
-                            'opening_status':'unknown','booking_required':True,'booking_status':'unknown'})
+                activities=self.initial_activities(pool,days,arrival,lodging,profile,body)
                 plan = {'activities':activities, 'charges':[], 'refunds':[], 'activity_evidence':{},
                         'financial_evidence':{}, 'arrival_at_return_station':None}
             unverified = ['开放、预约及票价以对应访问时段的规则为准；路线是查询时刻估算，不保证未来班次。',
@@ -203,6 +278,9 @@ class RecommendationEngine:
             last = None
             walking_total = duration_total = 0
             weather_penalty = 0
+            if body.lodging_poi_id and not lodging:
+                uncertain=True
+                unverified.append('所选住宿地点未能重新取得，住宿往返路线未知。')
             for activity in activities:
                 original = None
                 if trip:
@@ -212,28 +290,35 @@ class RecommendationEngine:
                 end = datetime.fromisoformat(activity['end_at'])
                 duration = end-start
                 origin = places.get(last['poi_id']) if last else arrival
-                response = self.route(origin, place, body)
+                departure=datetime.fromisoformat(last['end_at']) if last else stamp(body.start_date,body.arrival_time)
+                if last and departure.astimezone(TZ).date()!=start.astimezone(TZ).date():
+                    departure=stamp(start.astimezone(TZ).date(),'08:30')
+                response = self.route(origin, place, body, departure)
                 selected = self.choose(response, profile, body)
                 leg = {'from_name':origin.name if origin else '坐标未知', 'to_name':place.name if place else activity['poi_id'],
                        'activity_id':activity['id'], 'selected':selected,
-                       'options':json_value(response) if response else None, 'date':start.date().isoformat()}
+                       'options':json_value(response) if response else None, 'date':start.date().isoformat(), 'departure_at':departure.isoformat()}
                 legs.append(leg)
-                prior_ids = [a.id for a in trip.current_plan.plan.activities] if trip else []
-                original_index = prior_ids.index(activity['id']) if activity['id'] in prior_ids else -1
-                original_predecessor = prior_ids[original_index-1] if original_index > 0 else None
-                edge_changed = original_predecessor != (last['id'] if last else None)
-                changed = original is None or json_value(original) != activity or edge_changed
-                previous_changed = trip and last and next((json_value(a) for a in trip.current_plan.plan.activities if a.id==last['id']), None) != last
                 if selected:
                     travel = selected['duration_minutes']
-                    earliest = datetime.fromisoformat(last['end_at'])+timedelta(minutes=travel) if last else stamp(body.start_date,body.arrival_time)+timedelta(minutes=travel)
-                    if start < earliest and (not trip or changed or previous_changed):
+                    incoming_walk=selected['walking_minutes']
+                    earliest = departure+timedelta(minutes=travel)
+                    if start < earliest:
                         if not trip or activity['id'] not in trip.locked_activity_ids:
-                            start, end = earliest, earliest+duration
+                            start = earliest
+                            if activity['id'].endswith('-stay'):
+                                if start >= end:
+                                    end=start+timedelta(minutes=1)
+                                    dangerous=True
+                            else:
+                                end=start+duration
                             activity['start_at'],activity['end_at'] = start.isoformat(),end.isoformat()
-                    if (not trip or activity['id'] not in trip.locked_activity_ids) and (not trip or changed or previous_changed):
+                        else:
+                            dangerous=True
+                            unverified.append('当前交通估算与锁定活动的固定时间冲突；历史活动保持原样。')
+                    if not trip or activity['id'] not in trip.locked_activity_ids:
                         activity['transport_minutes_from_previous'] = travel if last else None
-                        activity['walking_minutes_from_previous'] = selected['walking_minutes'] if last else None
+                        activity['walking_minutes_from_previous'] = incoming_walk if last else None
                     walking_total += selected['walking_minutes'] or 0
                     duration_total += travel
                     if selected['walking_minutes'] is None:
@@ -246,7 +331,10 @@ class RecommendationEngine:
                         known += Decimal(selected['cost_cny'])*body.party_size
                 else:
                     uncertain = True
-                    if (not trip or activity['id'] not in trip.locked_activity_ids) and (not trip or changed or previous_changed):
+                    if self.route_conflict(response,body):
+                        dangerous=True
+                        unverified.append('此路段在允许的出行方式内未找到符合步行限制的路线：'+leg['from_name']+'→'+leg['to_name'])
+                    if not trip or activity['id'] not in trip.locked_activity_ids:
                         activity['transport_minutes_from_previous'] = None
                         activity['walking_minutes_from_previous'] = None
                 # Locked and unchanged booked facts must not be fabricated or changed by refreshed rules.
@@ -262,7 +350,13 @@ class RecommendationEngine:
                         plan['activity_evidence'][activity['id']] = rule.evidence.source_ref or 'unknown:rule-source'
                     else:
                         plan['activity_evidence'].pop(activity['id'],None)
-                if rule.data and rule.data.ticket_price_cny is not None:
+                is_stay=activity['id'].endswith('-stay')
+                if is_stay and (not trip or activity['id'] not in trip.locked_activity_ids):
+                    activity['opening_status']='unknown'
+                    activity['booking_required']=True
+                    activity['booking_status']='unknown'
+                    incomplete_cost=True
+                if not is_stay and rule.data and rule.data.ticket_price_cny is not None:
                     known += rule.data.ticket_price_cny*body.party_size
                 else:
                     incomplete_cost = True
@@ -280,14 +374,14 @@ class RecommendationEngine:
                 day_views.append({'date':start.date().isoformat(), 'activity_id':activity['id'],
                     'place':json_value(place) if place else None, 'rules':json_value(rule),
                     'weather':json_value(forecast) if forecast else None,
-                    'indoor_inferred':place.indoor if place else None})
+                    'indoor_inferred':place.indoor if place else None,'kind':'lodging' if is_stay else 'visit'})
                 if end.time() > time(18):
                     dangerous = True
                     unverified.append(activity['id']+'超出每日18:00游览窗口')
                 last = activity
             arrival_at = None
             if last:
-                response = self.route(places.get(last['poi_id']), returning, body)
+                response = self.route(places.get(last['poi_id']), returning, body, datetime.fromisoformat(last['end_at']))
                 selected = self.choose(response, profile, body)
                 legs.append({'from_name':places[last['poi_id']].name if last['poi_id'] in places else last['poi_id'],
                     'to_name':returning.name if returning else body.return_station, 'activity_id':None,
@@ -306,6 +400,9 @@ class RecommendationEngine:
                         known += Decimal(selected['cost_cny'])*body.party_size
                 else:
                     uncertain = True
+                    dangerous=dangerous or self.route_conflict(response,body)
+                    if self.route_conflict(response,body):
+                        unverified.append('到达返程站的末段路线超过所选步行限制。')
             plan['arrival_at_return_station'] = arrival_at.isoformat() if arrival_at else None
             known += body.other_costs_cny or Decimal(0)
             # Replace only this engine's tagged planned estimate. External ledgers are preserved.
@@ -352,15 +449,38 @@ class RecommendationEngine:
                 'ranking_note':'有限候选排序，非全局最优；先比较硬约束与证据，再比较步行×0.7+交通×0.2+已知费用×0.03+户外天气风险每处30分',
                 'plan':json_value(typed),'days':day_views,'legs':legs,'known_cost_cny':format(known,'.2f'),
                 'cost_complete':not incomplete_cost,'remaining_cny':format(body.budget_cny-known,'.2f'),
+                'available_balance_cny':None if incomplete_cost else format(body.budget_cny-known,'.2f'),
+                'paid_cny':format(sum((Decimal(c['amount_cny']) for c in plan['charges'] if c['status']=='paid'),Decimal(0)),'.2f'),
+                'estimated_cny':format(sum((Decimal(c['amount_cny']) for c in plan['charges'] if c['status']=='planned'),Decimal(0)),'.2f'),
+                'missing_costs':['部分门票、交通、住宿或餐饮尚无完整价格'] if incomplete_cost else [],
+                'lodging':json_value(lodging) if lodging else None,
                 'walking_minutes':None if any(not l['selected'] or l['selected']['walking_minutes'] is None for l in legs) else walking_total,
                 'transport_minutes':None if any(not l['selected'] for l in legs) else duration_total,
                 'unverified':unverified,'validation':json_value(validation)})
-        # The balanced proposal is a recommendation; infeasible proposals are always shown as such.
+        distinct=[]
+        seen=set()
+        for candidate in candidates:
+            signature=(tuple((a['poi_id'],a['start_at'],a['end_at']) for a in candidate['plan']['activities']),
+                tuple((l['selected']['mode'],l['selected']['duration_minutes'],l['selected']['walking_minutes']) if l['selected'] else None for l in candidate['legs']))
+            if signature not in seen:
+                seen.add(signature)
+                distinct.append(candidate)
+        candidates=distinct
         candidates.sort(key=lambda c:({'PASS':0,'UNKNOWN':1,'FAIL':2}[c['validation']['overall']],c['score']))
         for rank,c in enumerate(candidates):
             c['rank']=rank+1
-            c['recommended']=rank==0
-        return {'generator':'rules-v1','agentarts_connected':False,'input':json_value(body),
+            c['feasibility']='infeasible' if c['validation']['overall']=='FAIL' else 'unverified' if c['validation']['overall']=='UNKNOWN' else 'feasible'
+            c['recommended']=rank==0 and c['feasibility']!='infeasible' and all(l['selected'] for l in c['legs'])
+            c['label']={'balanced':'均衡游览','less_walking':'轻松游览','weather':'室内优先'}[c['profile']]
+            if c['profile']=='less_walking':
+                old_count=sum(not a.id.endswith('-stay') for a in trip.current_plan.plan.activities) if trip else len(days)*2
+                count=sum(not a['id'].endswith('-stay') for a in c['plan']['activities'])
+                c['reason']=f'减少{old_count-count}项游览，留出休息与交通缓冲；取舍是景点较少。' if count<old_count else '保留景点安排，比较当前允许方式的实际交通与步行时间。'
+            other=[x['walking_minutes'] for x in candidates if x is not c and x['walking_minutes'] is not None]
+            if c['walking_minutes'] is not None and other and c['walking_minutes']<min(other):
+                c['label']='少步行 · '+c['label']
+            c['warnings']=[check['detail'] for check in c['validation']['checks'] if check['status'] in ('FAIL','UNKNOWN')]
+        return {'generator':'rules-v1','format_version':2,'distinct_shortfall':max(0,3-len(candidates)),'agentarts_connected':False,'input':json_value(body),
             'places':[json_value(p) for p in places.values()], 'searches':[json_value(r) for r in searches],
             'arrival_candidates':[json_value(p) for p in (searches[-2].data or [])],
             'return_candidates':[json_value(p) for p in (searches[-1].data or [])],

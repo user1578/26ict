@@ -23,6 +23,9 @@ class MapFixture:
         data = [Place(poi_id=f'amap:fixture-{i}', name=request.city + ('博物馆' if i % 2 else '公园') + str(i),
             address=request.city, location=Coordinates(longitude=120+i/100, latitude=30+i/100),
             indoor=bool(i % 2)) for i in range(8)]
+        if any(word in request.keywords for word in ('酒店','火锅','小吃')):
+            kind='hotel' if '酒店' in request.keywords else 'food'
+            data=[Place(poi_id=f'amap:{kind}-{i}',name=request.city+('测试酒店' if kind=='hotel' else '测试小吃')+str(i),address='测试路',district='测试区',indoor=True,location=Coordinates(longitude=120.01+i/1000,latitude=30.01+i/1000)) for i in range(3)]
         if '站' in request.keywords:
             data = [Place(poi_id='amap:station', name=request.city+'站', location=Coordinates(longitude=120, latitude=30))]
         return ToolResult(status='PASS', code='ok', message='SIMULATED', evidence=self.http.evidence('amap','simulation:map'), data=data)
@@ -34,7 +37,7 @@ class MapFixture:
             seconds = 900 if mode == 'walking' else 600
             cost = Decimal('3.00') if mode == 'transit' else None
             data = None if self.broken else [RouteOption(duration_seconds=seconds, distance_meters=1000,
-                walking_seconds=seconds if mode == 'walking' else 120, cost_cny=cost)]
+                walking_seconds=seconds if mode == 'walking' else 0 if mode=='bicycling' else None if mode=='driving' else 120, cost_cny=cost)]
             results.append(RouteModeResult(mode=mode, status='UNKNOWN' if self.broken else 'PASS', code='no_route' if self.broken else 'ok',
                 message='SIMULATED', evidence=self.http.evidence('amap','simulation:route'), data=data))
         return RouteResponse(status='UNKNOWN' if self.broken else 'PASS', results=results)
